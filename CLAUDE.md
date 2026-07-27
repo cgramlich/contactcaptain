@@ -4,6 +4,13 @@ Personal CRM in the **Forever Apps** portfolio (publisher: MilSpo Life LLC). Bui
 MenuCaptain stack. This file is auto-read at session start — keep it TRUE. If you change an
 endpoint, env var, data model, or convention, update this file in the same session.
 
+**Doc currency (Forever Apps starter spec section 5):** update docs in the SAME session as
+the code change. This CLAUDE.md stays true to the code; the README/architecture body updates
+when the architecture changes. Write a DATED entry in
+`C:\Users\cjgra\Dropbox\My AI\CG Apps\Personal CRM\Personal CRM Log\` for EVERY work session.
+No hardcoded versions in docs (point at `APP_VERSION`/`BUILD` + the live `/api/health`).
+Rule: `CG Apps\Forever Apps\forever-apps-starter-spec.md` section 5.
+
 ## What it is
 A personal relationship manager (stay close to the people in your orbit) with an optional,
 toggleable **deals** layer. Single-file React-via-CDN + Babel PWA, FastAPI + Supabase
@@ -73,4 +80,4 @@ backend, deployed to the web; Capacitor native build is future.
 
 ## Docs to keep current (Forever Apps §5 doc-currency)
 - This `CLAUDE.md`, `README.md` (as-built body), and a dated entry in
-  `Dropbox\My AI\CG Apps\Personal CRM\Personal CRM Log\` on notable changes.
+  `Dropbox\My AI\CG Apps\Personal CRM\Personal CRM Log\` for every work session.
