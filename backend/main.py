@@ -47,10 +47,37 @@ except Exception:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("orbit")
 
+
+def _env_float(name: str, default: float) -> float:
+    """Typed config must never be able to crash the service. A malformed
+    value keeps the default and says so."""
+    raw = os.getenv(name, "")
+    if not raw.strip():
+        return default
+    try:
+        return float(raw.strip())
+    except ValueError:
+        logger.warning(f"[CONFIG] {name}='{raw}' is not a number - using {default}")
+        return default
+
+
+def _env_int(name: str, default: int) -> int:
+    """Typed config must never be able to crash the service. A malformed
+    value keeps the default and says so."""
+    raw = os.getenv(name, "")
+    if not raw.strip():
+        return default
+    try:
+        return int(raw.strip())
+    except ValueError:
+        logger.warning(f"[CONFIG] {name}='{raw}' is not a whole number - using {default}")
+        return default
+
+
 # --------------------------------------------------------------------------- #
 # Config / env
 # --------------------------------------------------------------------------- #
-APP_VERSION = "0.1.1"
+APP_VERSION = "0.1.2"
 APP_ENV = os.getenv("RAILWAY_ENVIRONMENT_NAME", "development")
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
@@ -65,9 +92,10 @@ OWNER_USER_IDS = {u for u in os.getenv("OWNER_USER_IDS", "").split(",") if u}
 DEBUG_KEY = os.getenv("DEBUG_KEY", "")
 
 # AI cost guardrails
-# `or` (not getenv default) so a blank env var falls back instead of crashing parse.
-AI_MONTHLY_BUDGET_USD = float(os.getenv("AI_MONTHLY_BUDGET_USD") or "50")
-MAX_TOKENS_CEILING = int(os.getenv("AI_MAX_TOKENS_CEILING") or "8192")
+# _env_float/_env_int: a malformed Railway value (e.g. "$50") warns and keeps
+# the default instead of raising at import and crash-looping the service.
+AI_MONTHLY_BUDGET_USD = _env_float("AI_MONTHLY_BUDGET_USD", 50.0)
+MAX_TOKENS_CEILING = _env_int("AI_MAX_TOKENS_CEILING", 8192)
 
 # CORS — web origins + Capacitor native origins.
 #   iOS default scheme   = capacitor://localhost
