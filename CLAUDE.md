@@ -62,6 +62,20 @@ backend, deployed to the web; Capacitor native build is future.
 - `SUPABASE_URL` + `SUPABASE_PUBLISHABLE_KEY` (the public `sb_publishable_…` key) for auth.
 - Branding routed through `BRAND` + the CSS `:root` palette (drop-in swap principle).
 - Offline mode: an "Explore offline (no account)" path appears only when `SUPABASE_URL` is unset.
+- **Supabase auth is called as raw REST** (`supabasePassword` → `/auth/v1/token`). The
+  `supabase-js` CDN library is deliberately NOT loaded — nothing to pin or upgrade here.
+- **Saves are optimistic with retry.** `saveCollection` writes local state + localStorage,
+  then parks the collection's payload in `unsentRef` until its `PUT` is confirmed.
+  `flushUnsent` retries on the next save, on `online`, and on visibilitychange-visible.
+  Anything still unsent raises the amber top banner + the Settings "Cloud sync" row.
+  Invariant: **a failed push must never read as "synced."**
+- **Home reminder rows dismiss, they don't delete.** "Time to reach out" and "Upcoming
+  birthdays" are VIEWS of a contact, so their swipe reveals a neutral **Dismiss**
+  (`SwipeRow kind="dismiss"`). Carried on the contact record: `reachout_snooze_until`
+  (ISO date; `contactDueInfo` takes the later of it and the cadence due date) and
+  `birthday_ack` (the ISO date of the acknowledged occurrence, so the row returns next
+  year). Deleting a contact lives on the contact detail screen only. Follow-up and
+  interaction rows keep a real destructive Delete.
 
 ## Security / RLS
 - Tables have **RLS on, no policies** → clients (publishable key) can't touch them directly.

@@ -114,13 +114,18 @@
     .pill{ display:inline-block; background:var(--surface-2); border:1px solid var(--line);
       color:var(--text-dim); border-radius:999px; padding:3px 10px; font-size:12px; margin:2px 4px 2px 0; }
 
-    /* PWA update banner (top of app) - the whole bar is one tappable button */
-    .syncbar{ position:fixed; top:env(safe-area-inset-top); left:0; right:0; z-index:40;
+    /* Top-of-app banners (PWA update, unsaved-changes warning). The wrapper is the
+       fixed layer so more than one bar can stack instead of overlapping. */
+    .bars{ position:fixed; top:env(safe-area-inset-top); left:0; right:0; z-index:40;
+      max-width:560px; margin:0 auto; display:flex; flex-direction:column; }
+    .syncbar{ width:100%;
       display:flex; align-items:center; gap:10px; justify-content:center;
       background:var(--accent); color:#fff; font-size:13px; font-weight:600; padding:8px 14px;
-      max-width:560px; margin:0 auto; border:0; cursor:pointer; }
+      border:0; cursor:pointer; }
+    .syncbar.warn{ background:var(--amber); color:#241a04; }
     .syncbar .go{ background:rgba(255,255,255,.2); border:0; color:#fff;
       border-radius:8px; padding:5px 12px; font-weight:600; }
+    .syncbar.warn .go{ background:rgba(0,0,0,.16); color:inherit; }
     .toast{ position:fixed; bottom:96px; left:50%; transform:translateX(-50%); z-index:50;
       background:var(--surface-2); color:var(--text); border:1px solid var(--line);
       border-radius:12px; padding:10px 18px; font-size:14px; box-shadow:var(--shadow);
@@ -203,11 +208,15 @@
     .duecard.alert{ background:rgba(229,100,90,.12); border-color:var(--danger); color:var(--danger); }
     .duecard.ok{ background:var(--surface-2); color:var(--text-dim); }
 
-    /* ---- swipe-to-delete on list rows (portfolio standard, ref impl tracker-app) ---- */
+    /* ---- swipe action on list rows (portfolio standard, ref impl tracker-app) ----
+       Default action is a destructive Delete (red). Rows that are only a REMINDER VIEW
+       of a record (Home's "Time to reach out" / "Upcoming birthdays") reveal a neutral
+       Dismiss instead - deleting the person stays on the contact detail screen. */
     .swipe-wrap{ position:relative; overflow:hidden; border-radius:12px; }
     .swipe-del{ position:absolute; top:0; right:0; bottom:0; width:88px; border:none; background:#b23b29; color:#fff;
       display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; font-size:12px; font-weight:700; }
-    .swipe-del svg{ width:18px; height:18px; stroke:#fff; stroke-width:2; fill:none; }
+    .swipe-del.dismiss{ background:var(--surface-2); color:var(--text-dim); box-shadow:inset 1px 0 0 var(--line); }
+    .swipe-del svg{ width:18px; height:18px; stroke:currentColor; stroke-width:2; fill:none; }
     .swipe-body{ position:relative; background:var(--surface); touch-action:pan-y; will-change:transform; }
     .swipe-wrap.on-bg .swipe-body{ background:var(--bg); }
     /* a wrapped row is always :last-child of its swipe-body, which would strip every
@@ -246,11 +255,11 @@ const { useState, useEffect, useRef, useCallback } = React;
 // User-facing semantic version (MAJOR.MINOR.PATCH). This is what shows in Settings,
 // the update prompts, and the footers - a real version, not a build date. Bump it on
 // every deploy: PATCH for a fix, MINOR for a feature, MAJOR for a big milestone.
-const APP_VERSION = "0.2.6";
+const APP_VERSION = "0.3.0";
 // Internal build stamp. Bump on every deploy too (today's date + a counter). This is
 // what the updater actually COMPARES (it's monotonic, so detection never misfires) and
 // what cache-busts the reload; APP_VERSION above is the friendly label shown to users.
-const BUILD = "2026-07-24.2";
+const BUILD = "2026-08-01.1";
 const BRAND = { name: "Inner Orbit", tagline: "Stay close to the people in your orbit." };
 
 // Hosted backend base (Railway). Overridable per-user in Settings.
@@ -283,24 +292,39 @@ function maxDate(a, b){ if(!a) return b; if(!b) return a; return a>b ? a : b; }
 function fmtDate(iso){ if(!iso) return ""; const d=new Date(iso+"T00:00:00Z"); if(isNaN(d)) return iso;
   return d.toLocaleDateString(undefined,{ month:"short", day:"numeric", year:"numeric", timeZone:"UTC" }); }
 // Cadence status for a contact: null if no cadence set, else over/today/ok.
+// `reachout_snooze_until` is how a DISMISSED reach-out reminder is carried: it pushes the
+// next due date forward without faking a `last_interaction_at` (dismissing is not logging).
 function contactDueInfo(c){
   if(!c || !c.cadence_days) return null;
   const base = c.last_interaction_at || c.created_at || todayISO();
-  const due = addDays(base, c.cadence_days);
+  let due = addDays(base, c.cadence_days);
+  if (c.reachout_snooze_until && c.reachout_snooze_until > due) due = c.reachout_snooze_until;
   const over = daysBetween(due, todayISO());          // today - due
   if(over > 0)  return { state:"over",  days:over,  label:"Reach out — "+over+" day"+(over===1?"":"s")+" overdue" };
   if(over === 0) return { state:"today", days:0,    label:"Reach out — due today" };
   return { state:"ok", days:-over, label:"Next reach-out in "+(-over)+" day"+(over===-1?"":"s") };
 }
-// Days until the next occurrence of a MM-DD birthday (ignores year). null if unset/invalid.
-function daysUntilBirthday(bday){
+// The next occurrence of a MM-DD birthday as an ISO date (ignores the stored year).
+// Doubles as the dismiss key: `birthday_ack` holds this date, so the row stays hidden
+// until the day passes and the occurrence rolls to next year.
+function nextBirthdayISO(bday){
   if(!bday || bday.length<5) return null;
   const p=bday.split("-"); const mo=+p[1]-1, da=+p[2];
   if(isNaN(mo)||isNaN(da)) return null;
   const now=new Date(); const t=new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   let next=new Date(Date.UTC(t.getUTCFullYear(), mo, da));
   if(next < t) next=new Date(Date.UTC(t.getUTCFullYear()+1, mo, da));
-  return Math.round((next - t)/86400000);
+  return next.toISOString().slice(0,10);
+}
+// Days until the next occurrence of a MM-DD birthday (ignores year). null if unset/invalid.
+function daysUntilBirthday(bday){
+  const next = nextBirthdayISO(bday);
+  return next===null ? null : daysBetween(todayISO(), next);
+}
+// True when this year's birthday reminder has been dismissed for this contact.
+function birthdayDismissed(c){
+  const next = nextBirthdayISO(c && c.birthday);
+  return !!(next && c.birthday_ack === next);
 }
 
 /* Interaction types */
@@ -617,14 +641,18 @@ function Placeholder({ glyph, title, note }){
   );
 }
 
-/* Swipe a row left to reveal a Delete action (portfolio standard, ref impl tracker-app).
+/* Swipe a row left to reveal an action (portfolio standard, ref impl tracker-app).
    Horizontal-only, so vertical scroll is unaffected; a swipe suppresses the row's open-on-tap.
    `bare` = row sits on the page background rather than inside a card.
+   `kind="dismiss"` = the row is a REMINDER VIEW of a record, not the record itself, so the
+   revealed action clears the reminder and is styled neutrally - never the red delete.
    NOTE: setPointerCapture is DEFERRED until horizontal drag intent is established.
    Capturing on pointerdown retargets the follow-up click to the swipe body on
    desktop mice, so a wrapped row's onClick never fires (HomeCaptain finding). */
 const IC_TRASH = <svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>;
-function SwipeRow({ onDelete, bare, children }){
+const IC_SNOOZE = <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>;
+function SwipeRow({ onDelete, bare, kind, children }){
+  const dismiss = kind === "dismiss";
   const [dx,setDx] = useState(0);
   const st = useRef(null); const moved = useRef(false);
   function down(e){ st.current = { x:e.clientX, y:e.clientY, base:dx }; moved.current = false; }
@@ -641,7 +669,8 @@ function SwipeRow({ onDelete, bare, children }){
   function clickCapture(e){ if(moved.current || dx !== 0){ e.stopPropagation(); e.preventDefault(); moved.current = false; setDx(0); } }
   return (
     <div className={"swipe-wrap"+(bare?" on-bg":"")}>
-      <button className="swipe-del" onClick={(e)=>{ e.stopPropagation(); setDx(0); onDelete(); }}>{IC_TRASH}<span>Delete</span></button>
+      <button className={"swipe-del"+(dismiss?" dismiss":"")} onClick={(e)=>{ e.stopPropagation(); setDx(0); onDelete(); }}>
+        {dismiss?IC_SNOOZE:IC_TRASH}<span>{dismiss?"Dismiss":"Delete"}</span></button>
       <div className="swipe-body" style={{ transform:"translateX("+dx+"px)", transition: st.current ? "none" : "transform .18s" }}
         onPointerDown={down} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onClickCapture={clickCapture}>
         {children}
@@ -650,7 +679,8 @@ function SwipeRow({ onDelete, bare, children }){
   );
 }
 
-function HomeView({ data, onOpenContact, onQuickLog, onToggleTask, onDeleteContact, onDeleteTask }){
+function HomeView({ data, onOpenContact, onQuickLog, onToggleTask, onDeleteTask,
+                    onDismissReachOut, onDismissBirthday }){
   const contacts = data.contacts || [];
   const tasks = data.tasks || [];
   const cName = (id)=> (contacts.find(c=>c.id===id)||{}).name || "";
@@ -662,7 +692,8 @@ function HomeView({ data, onOpenContact, onQuickLog, onToggleTask, onDeleteConta
   const openTasks = tasks.filter(t=> !t.done)
     .sort((a,b)=> (a.due_date||"9999-99-99").localeCompare(b.due_date||"9999-99-99"));
 
-  const bdays = contacts.map(c=> ({ c, d: daysUntilBirthday(c.birthday) }))
+  const bdays = contacts.filter(c=> !birthdayDismissed(c))
+    .map(c=> ({ c, d: daysUntilBirthday(c.birthday) }))
     .filter(x=> x.d!==null && x.d<=30).sort((a,b)=> a.d-b.d);
 
   if (due.length===0 && openTasks.length===0 && bdays.length===0){
@@ -676,7 +707,7 @@ function HomeView({ data, onOpenContact, onQuickLog, onToggleTask, onDeleteConta
         <div className="card">
           <div className="sec-title">Time to reach out</div>
           {due.map(({c,info})=> (
-            <SwipeRow key={c.id} onDelete={()=>{ if(confirm("Delete this contact?")) onDeleteContact(c.id); }}>
+            <SwipeRow key={c.id} kind="dismiss" onDelete={()=> onDismissReachOut(c.id)}>
               <div className="list-row" onClick={()=> onOpenContact(c.id)}>
                 <div className="avatar">{initials(c.name)}</div>
                 <div className="lr-main"><div className="lr-name">{c.name}</div>
@@ -707,7 +738,7 @@ function HomeView({ data, onOpenContact, onQuickLog, onToggleTask, onDeleteConta
         <div className="card">
           <div className="sec-title">Upcoming birthdays</div>
           {bdays.map(({c,d})=> (
-            <SwipeRow key={c.id} onDelete={()=>{ if(confirm("Delete this contact?")) onDeleteContact(c.id); }}>
+            <SwipeRow key={c.id} kind="dismiss" onDelete={()=> onDismissBirthday(c.id)}>
               <div className="list-row" onClick={()=> onOpenContact(c.id)}>
                 <div className="avatar">{initials(c.name)}</div>
                 <div className="lr-main"><div className="lr-name">{c.name}</div>
@@ -925,7 +956,8 @@ function DealDetail({ deal, contact, org, onEdit, onDelete, onClose, onStage, on
   );
 }
 
-function SettingsView({ cfg, onCfg, onLogout, onCheckUpdate, updMsg, update, onApplyUpdate, onImport }){
+function SettingsView({ cfg, onCfg, onLogout, onCheckUpdate, updMsg, update, onApplyUpdate, onImport,
+                        syncUnsent, syncPushing, onRetrySync }){
   const theme = cfg.theme || "dark";
   function setTheme(t){
     const next = {...cfg, theme:t}; onCfg(next);
@@ -947,6 +979,21 @@ function SettingsView({ cfg, onCfg, onLogout, onCheckUpdate, updMsg, update, onA
           <button className={"btn"+(theme==="light"?" primary":"")} onClick={()=>setTheme("light")}>Light</button>
         </div>
       </div>
+
+      {!cfg.offline && (
+        <div className="card">
+          <div className="row" style={{justifyContent:"space-between"}}>
+            <div><div style={{fontWeight:600}}>Cloud sync</div>
+              <div className="muted">
+                {syncPushing ? "Saving..."
+                  : syncUnsent > 0 ? "Some changes aren't saved yet - they're safe on this device"
+                  : "All changes saved"}
+              </div></div>
+            {!syncPushing && syncUnsent > 0 &&
+              <button className="btn" style={{width:"auto"}} onClick={onRetrySync}>Retry</button>}
+          </div>
+        </div>
+      )}
 
       <div className="card">
         <div className="row" style={{justifyContent:"space-between"}}>
@@ -977,7 +1024,10 @@ function SettingsView({ cfg, onCfg, onLogout, onCheckUpdate, updMsg, update, onA
       </div>
       <p className="muted" style={{textAlign:"center", marginTop:6, marginBottom:14}}>{BRAND.name} v{APP_VERSION}</p>
 
-      <button className="btn danger" onClick={onLogout} style={{marginTop:4}}>Sign out</button>
+      {/* signing out wipes the local cache, so warn while anything is still unsent */}
+      <button className="btn danger" style={{marginTop:4}}
+        onClick={()=>{ if(syncUnsent > 0 && !confirm("Some changes haven't saved to the cloud yet. Sign out anyway and lose them?")) return; onLogout(); }}>
+        Sign out</button>
     </div>
   );
 }
@@ -1488,10 +1538,67 @@ function App(){
     setTab(t==="deals" && !cfg.dealsEnabled ? "home" : t);
   }
 
+  /* ---- push resilience -------------------------------------------------
+     Saving is optimistic: local state + localStorage first, then a PUT. A PUT can fail
+     (offline, expired token, backend blip) and the old code only WARN-logged it, so a
+     save could be silently lost while the UI still looked clean.
+     Now every save parks the collection's latest bytes in `unsentRef` until its PUT
+     lands, we retry on the next save / `online` / tab-visible, and anything still
+     unsent is shown as a problem. The invariant: a failed push never reads as synced.
+     Deliberately NOT a per-record dirty-flag engine - collections are pushed whole,
+     so the last payload for a collection is all the state a retry needs. */
+  const unsentRef = useRef({});          // { collectionName: latest payload not yet confirmed }
+  const flushingRef = useRef(false);
+  const cfgRef = useRef(cfg);
+  cfgRef.current = cfg;
+  const [unsent,setUnsent] = useState(0);   // collections currently unconfirmed (drives the UI)
+  const [pushing,setPushing] = useState(false);
+
+  const flushUnsent = useCallback(async ()=>{
+    if (flushingRef.current) return;
+    const c = cfgRef.current;
+    if (!configComplete(c) || !Object.keys(unsentRef.current).length) return;
+    flushingRef.current = true; setPushing(true);
+    try {
+      // A save made mid-flush lands in unsentRef after its name was read, so do a second
+      // pass; bounded so a hot loop can't spin. A failure stops us until the next trigger.
+      for (let pass=0; pass<3; pass++){
+        const names = Object.keys(unsentRef.current);
+        if (!names.length) break;
+        let failed = false;
+        for (const name of names){
+          const payload = unsentRef.current[name];
+          try {
+            await putCollection(c, name, payload);
+            // only clear if this is still the newest payload for that collection
+            if (unsentRef.current[name] === payload) delete unsentRef.current[name];
+          } catch(e){ failed = true; logMsg("WARN","push "+name+": "+(e&&e.message)); }
+        }
+        if (failed) break;
+      }
+    } finally {
+      flushingRef.current = false; setPushing(false);
+      setUnsent(Object.keys(unsentRef.current).length);
+    }
+  },[]);
+
+  // Retry triggers: back online, tab brought forward. (The third - "on the next save" -
+  // is saveCollection itself, which routes every push through flushUnsent.)
+  useEffect(()=>{
+    const onOnline = ()=> flushUnsent();
+    const onVis = ()=>{ if(document.visibilityState==="visible") flushUnsent(); };
+    window.addEventListener("online", onOnline);
+    document.addEventListener("visibilitychange", onVis);
+    return ()=>{ window.removeEventListener("online", onOnline); document.removeEventListener("visibilitychange", onVis); };
+  },[flushUnsent]);
+
   // Persist a whole collection: optimistic local + cache, then push to backend.
   function saveCollection(name, next){
     setData(d=>{ const nd={...d, [name]:next}; saveCache(nd); return nd; });
-    if (configComplete(cfg)) putCollection(cfg, name, next).catch(e=> logMsg("WARN","save "+name+": "+(e&&e.message)));
+    if (!configComplete(cfg)) return;   // offline/local-only mode has nowhere to push
+    unsentRef.current[name] = next;
+    setUnsent(Object.keys(unsentRef.current).length);
+    flushUnsent();
   }
   function ensureOrg(name){
     const nm=(name||"").trim(); if(!nm) return null;
@@ -1522,6 +1629,9 @@ function App(){
       how_we_met:form.how_we_met, birthday:form.birthday, notes:form.notes,
       cadence_days:form.cadence_days,
       last_interaction_at: base.last_interaction_at || null,
+      // carried through an edit so dismissed Home reminders don't silently come back
+      reachout_snooze_until: base.reachout_snooze_until || null,
+      birthday_ack: base.birthday_ack || null,
       created_at: base.created_at || todayISO(), updated_at: todayISO(),
     };
     upsertContact(c);
@@ -1549,6 +1659,23 @@ function App(){
   }
   function deleteInteraction(id){ saveCollection("interactions", (data.interactions||[]).filter(x=> x.id!==id)); }
   function quickLog(contactId){ saveInteraction(contactId, null, { type:"note", date:todayISO(), note:"Reached out" }); flash("Logged"); }
+
+  // Home's reminder rows are VIEWS of a contact, so their swipe dismisses the reminder -
+  // it never deletes the person (that lives on the contact detail screen only).
+  // Reach-out: push the next due date one full cadence out, without logging a fake interaction.
+  function dismissReachOut(id){
+    const c=(data.contacts||[]).find(x=> x.id===id); if(!c) return;
+    const until = addDays(todayISO(), c.cadence_days || 30);
+    upsertContact({ ...c, reachout_snooze_until: until, updated_at: todayISO() });
+    flash("Reminder dismissed");
+  }
+  // Birthday: remember THIS year's occurrence date; the row returns once that date passes.
+  function dismissBirthday(id){
+    const c=(data.contacts||[]).find(x=> x.id===id); if(!c) return;
+    const next = nextBirthdayISO(c.birthday); if(!next) return;
+    upsertContact({ ...c, birthday_ack: next, updated_at: todayISO() });
+    flash("Birthday reminder dismissed");
+  }
   function addTask(contactId, title, due_date){
     const t = { id:uid("t"), contact_id:contactId, title, due_date:due_date||null, done:false, created_at:todayISO() };
     saveCollection("tasks", [t, ...(data.tasks||[])]);
@@ -1706,7 +1833,8 @@ function App(){
   if (tab==="home") screen = <HomeView data={data}
                     onOpenContact={(id)=> setOverlay({type:"contactDetail", id})}
                     onQuickLog={quickLog} onToggleTask={toggleTask}
-                    onDeleteContact={deleteContact} onDeleteTask={deleteTask} />;
+                    onDeleteTask={deleteTask}
+                    onDismissReachOut={dismissReachOut} onDismissBirthday={dismissBirthday} />;
   else if (tab==="people") screen = <PeopleView data={data}
                     onOpenContact={(id)=> setOverlay({type:"contactDetail", id})}
                     onOpenOrg={(id)=> setOverlay({type:"orgDetail", id})}
@@ -1716,16 +1844,29 @@ function App(){
                     onDeleteDeal={deleteDeal} />;
   else screen = <SettingsView cfg={cfg} onCfg={applyCfg} onLogout={signOutHard}
                     onCheckUpdate={checkUpdate} updMsg={updMsg} update={update} onApplyUpdate={doApplyUpdate}
+                    syncUnsent={unsent} syncPushing={pushing} onRetrySync={flushUnsent}
                     onImport={()=> setOverlay({type:"import"})} />;
+
+  // A push that has come back and left work behind = a real problem, so say so. While a
+  // push is still in flight we stay quiet (every save would otherwise flash a banner).
+  const syncStuck = unsent > 0 && !pushing;
 
   return (
     <div className="app-shell">
-      {update && (
-        <button className="syncbar" onClick={doApplyUpdate}>
-          <span>Update available <b>(v{update.ver||update.build})</b></span>
-          <span className="go">Refresh</span>
-        </button>
-      )}
+      <div className="bars">
+        {syncStuck && (
+          <button className="syncbar warn" onClick={flushUnsent}>
+            <span>Changes not saved to the cloud</span>
+            <span className="go">Retry</span>
+          </button>
+        )}
+        {update && (
+          <button className="syncbar" onClick={doApplyUpdate}>
+            <span>Update available <b>(v{update.ver||update.build})</b></span>
+            <span className="go">Refresh</span>
+          </button>
+        )}
+      </div>
       <TopBar tab={tab} onSettings={openSettings} onBack={closeSettings} />
       <div className="content">{screen}</div>
       {toast && <div className="toast">{toast}</div>}
