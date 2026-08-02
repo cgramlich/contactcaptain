@@ -49,10 +49,11 @@ Inner Orbit is deployed and in use. (Deployed version is sourced from `APP_VERSI
 
 **Built (V1):** contacts · organizations · tags · interaction log · follow-up + cadence
 "who to reach out to" engine · upcoming birthdays · gated deals pipeline · AI (✨ Summarize /
-✨ Draft check-in) · vCard import with dedupe · offline mode.
+✨ Draft check-in) · vCard import with dedupe · **digital business card** (public shareable
+card + QR, save-contact vCard, "share your info" → review inbox) · offline mode.
 
 **Next:** contact-import rounds (Gmail → iCloud) · Google Contacts sync · email-to-timeline ·
-Blinq-style digital business card · Apple contacts + Capacitor native build + store listings.
+Apple contacts + Capacitor native build + store listings.
 
 See **`CLAUDE.md`** for architecture, endpoints, env vars, and conventions.
 

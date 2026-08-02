@@ -72,6 +72,27 @@ create table if not exists public.ai_usage (
 create index if not exists ai_usage_user_idx    on public.ai_usage(user_id);
 create index if not exists ai_usage_created_idx on public.ai_usage(created_at);
 
+-- ---- digital business card (public shareable card + connect leads) --------
+-- One card per user, looked up publicly by its unguessable `slug`.
+create table if not exists public.cards (
+  user_id    uuid primary key references auth.users(id) on delete cascade,
+  slug       text unique not null,
+  data       jsonb not null default '{}'::jsonb,   -- public shareable fields only
+  published  boolean not null default false,
+  updated_at timestamptz not null default now()
+);
+create index if not exists cards_slug_idx on public.cards(slug);
+
+-- Incoming "share your info" submissions from a card's public page (a review inbox).
+create table if not exists public.card_leads (
+  id         bigint generated always as identity primary key,
+  user_id    uuid not null references auth.users(id) on delete cascade,  -- card owner
+  slug       text,
+  data       jsonb not null default '{}'::jsonb,   -- {name,email,phone,note}
+  created_at timestamptz not null default now()
+);
+create index if not exists card_leads_user_idx on public.card_leads(user_id);
+
 -- ===========================================================================
 -- Row Level Security
 -- ===========================================================================
@@ -87,6 +108,8 @@ alter table public.deals         enable row level security;
 alter table public.meta          enable row level security;
 alter table public.device_tokens enable row level security;
 alter table public.ai_usage      enable row level security;
+alter table public.cards         enable row level security;
+alter table public.card_leads    enable row level security;
 
 -- ===========================================================================
 -- service_role grants (fixes 42501 on new tables; auto-grants future tables)

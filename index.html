@@ -230,6 +230,16 @@
     .spinner{ width:16px; height:16px; border-radius:50%; border:2px solid var(--line);
       border-top-color:var(--accent); display:inline-block; animation:spin .8s linear infinite; }
     @keyframes spin{ to{ transform:rotate(360deg); } }
+
+    /* ---- public digital card (Phase 7) ---- */
+    .pub-wrap{ min-height:100%; display:flex; justify-content:center; padding:24px 16px 40px; }
+    .pub-card{ width:100%; max-width:440px; }
+    .pub-hero{ text-align:center; padding:8px 0 4px; }
+    .pub-hero .avatar.lg{ margin:0 auto; width:76px; height:76px; font-size:26px; }
+    .pub-hero h1{ font-size:26px; }
+    .pub-methods{ display:flex; flex-direction:column; gap:8px; margin:14px 0; }
+    .pub-methods .btn{ text-decoration:none; text-align:center; }
+    .pub-foot{ text-align:center; font-size:12px; margin-top:20px; }
   </style>
 
   <script>
@@ -255,11 +265,11 @@ const { useState, useEffect, useRef, useCallback } = React;
 // User-facing semantic version (MAJOR.MINOR.PATCH). This is what shows in Settings,
 // the update prompts, and the footers - a real version, not a build date. Bump it on
 // every deploy: PATCH for a fix, MINOR for a feature, MAJOR for a big milestone.
-const APP_VERSION = "0.3.0";
+const APP_VERSION = "0.4.0";
 // Internal build stamp. Bump on every deploy too (today's date + a counter). This is
 // what the updater actually COMPARES (it's monotonic, so detection never misfires) and
 // what cache-busts the reload; APP_VERSION above is the friendly label shown to users.
-const BUILD = "2026-08-01.1";
+const BUILD = "2026-08-01.2";
 const BRAND = { name: "Inner Orbit", tagline: "Stay close to the people in your orbit." };
 
 // Hosted backend base (Railway). Overridable per-user in Settings.
@@ -468,6 +478,72 @@ async function aiRelay(cfg, { task, messages, system, max_tokens }){
   const data = await res.json().catch(()=> ({}));
   if (!res.ok) { const e=new Error(data.detail||("AI failed "+res.status)); e.status=res.status; throw e; }
   return (data.content||[]).map(b=> b.text||"").join("").trim();
+}
+
+/* ---- digital business card client ----------------------------------- */
+async function getCard(cfg){
+  const res = await fetch(apiBase(cfg)+"/api/card", { headers: await authHeaders(cfg) });
+  if (!res.ok) throw new Error("GET card -> "+res.status);
+  return res.json();   // { slug, published, data }
+}
+async function saveCard(cfg, data, published){
+  const res = await fetch(apiBase(cfg)+"/api/card", {
+    method:"PUT", headers:{ "Content-Type":"application/json", ...(await authHeaders(cfg)) },
+    body:JSON.stringify({ data, published: !!published }),
+  });
+  if (!res.ok) throw new Error("PUT card -> "+res.status);
+  return res.json();   // { ok, slug, published, data }
+}
+async function getCardLeads(cfg){
+  const res = await fetch(apiBase(cfg)+"/api/card/leads", { headers: await authHeaders(cfg) });
+  if (!res.ok) throw new Error("GET leads -> "+res.status);
+  return res.json();   // [{ id, data, created_at }]
+}
+async function deleteCardLead(cfg, id){
+  const res = await fetch(apiBase(cfg)+"/api/card/leads/"+id, { method:"DELETE", headers: await authHeaders(cfg) });
+  if (!res.ok && res.status!==204) throw new Error("DELETE lead -> "+res.status);
+}
+// PUBLIC (no auth) — used by the shared card page.
+async function publicGetCard(slug){
+  const res = await fetch(API_BASE_DEFAULT+"/api/card/"+encodeURIComponent(slug));
+  if (res.status===404) return null;
+  if (!res.ok) throw new Error("card "+res.status);
+  return res.json();
+}
+async function publicConnect(slug, body){
+  const res = await fetch(API_BASE_DEFAULT+"/api/card/"+encodeURIComponent(slug)+"/connect", {
+    method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(body),
+  });
+  const d = await res.json().catch(()=> ({}));
+  if (!res.ok) throw new Error(d.detail || ("connect "+res.status));
+  return d;
+}
+function cardUrl(slug){ return "https://getinnerorbit.io/?card=" + encodeURIComponent(slug); }
+// QR: V1 uses a public image service (the card URL is public by design). TODO: vendor/
+// inline a QR generator before the native build so nothing loads off-CDN there.
+function qrImgUrl(url){ return "https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data=" + encodeURIComponent(url); }
+// Build a downloadable vCard 3.0 from a card's public fields.
+function buildVCard(card){
+  const esc = s => String(s||"").replace(/([,;\\])/g,"\\$1").replace(/\n/g," ");
+  const L = ["BEGIN:VCARD","VERSION:3.0"];
+  if (card.name) { L.push("FN:"+esc(card.name)); L.push("N:"+esc(card.name)+";;;;"); }
+  if (card.company || card.title) L.push("ORG:"+esc(card.company||""));
+  if (card.title) L.push("TITLE:"+esc(card.title));
+  (card.emails||[]).forEach(e=> e && L.push("EMAIL;TYPE=INTERNET:"+esc(e)));
+  (card.phones||[]).forEach(p=> p && L.push("TEL:"+esc(p)));
+  (card.links||[]).forEach(l=> l && l.url && L.push("URL:"+esc(l.url)));
+  if (card.location) L.push("ADR;TYPE=WORK:;;"+esc(card.location)+";;;;");
+  if (card.bio) L.push("NOTE:"+esc(card.bio));
+  L.push("END:VCARD");
+  return L.join("\r\n");
+}
+function downloadVCard(card){
+  const blob = new Blob([buildVCard(card)], { type:"text/vcard" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = ((card.name||"contact").replace(/[^\w]+/g,"-")) + ".vcf";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=> URL.revokeObjectURL(a.href), 2000);
 }
 
 /* ---- version check / in-app updater --------------------------------- */
@@ -956,7 +1032,7 @@ function DealDetail({ deal, contact, org, onEdit, onDelete, onClose, onStage, on
   );
 }
 
-function SettingsView({ cfg, onCfg, onLogout, onCheckUpdate, updMsg, update, onApplyUpdate, onImport,
+function SettingsView({ cfg, onCfg, onLogout, onCheckUpdate, updMsg, update, onApplyUpdate, onImport, onCard,
                         syncUnsent, syncPushing, onRetrySync }){
   const theme = cfg.theme || "dark";
   function setTheme(t){
@@ -991,6 +1067,16 @@ function SettingsView({ cfg, onCfg, onLogout, onCheckUpdate, updMsg, update, onA
               </div></div>
             {!syncPushing && syncUnsent > 0 &&
               <button className="btn" style={{width:"auto"}} onClick={onRetrySync}>Retry</button>}
+          </div>
+        </div>
+      )}
+
+      {!cfg.offline && (
+        <div className="card">
+          <div className="row" style={{justifyContent:"space-between"}}>
+            <div><div style={{fontWeight:600}}>My digital card</div>
+              <div className="muted">A shareable card + QR; capture new contacts</div></div>
+            <button className="btn" style={{width:"auto"}} onClick={onCard}>Open</button>
           </div>
         </div>
       )}
@@ -1511,6 +1597,210 @@ function AIPanel({ title, run, onClose }){
   );
 }
 
+/* ============================================================
+   DIGITAL BUSINESS CARD — public card page + owner editor (Phase 7)
+   ============================================================ */
+function PublicCard({ slug }){
+  const [state,setState] = useState("loading");  // loading | ready | notfound | error
+  const [card,setCard] = useState(null);
+  const [form,setForm] = useState({ name:"", email:"", phone:"", note:"" });
+  const [sent,setSent] = useState(false);
+  const [busy,setBusy] = useState(false);
+  const [err,setErr] = useState("");
+  useEffect(()=>{ let live=true;
+    (async ()=>{
+      try { const c=await publicGetCard(slug); if(!live) return;
+        if(!c){ setState("notfound"); return; }
+        if(c.accent && /^#[0-9a-fA-F]{3,8}$/.test(c.accent)) document.documentElement.style.setProperty("--accent", c.accent);
+        setCard(c); setState("ready");
+      } catch(e){ if(live){ setErr(e.message||"Couldn't load this card."); setState("error"); } }
+    })();
+    return ()=>{ live=false; };
+  },[slug]);
+
+  async function submit(){
+    if(!(form.name.trim()||form.email.trim()||form.phone.trim())){ setErr("Add at least your name, email, or phone."); return; }
+    setBusy(true); setErr("");
+    try { await publicConnect(slug, form); setSent(true); }
+    catch(e){ setErr(e.message||"Couldn't send — try again."); }
+    finally { setBusy(false); }
+  }
+
+  if(state==="loading") return <div className="pub-wrap"><div className="muted" style={{textAlign:"center",padding:60}}>Loading…</div></div>;
+  if(state==="notfound") return <div className="pub-wrap"><div className="empty"><div className="glyph">🔍</div><h3>Card not found</h3><div className="muted">This card link isn’t active.</div></div></div>;
+  if(state==="error") return <div className="pub-wrap"><div className="err" style={{textAlign:"center",padding:40}}>{err}</div></div>;
+
+  const c=card;
+  const firstName = (c.name||"").trim().split(/\s+/)[0] || "they";
+  return (
+    <div className="pub-wrap">
+      <div className="pub-card">
+        <div className="pub-hero">
+          <div className="avatar lg">{initials(c.name)}</div>
+          <h1 style={{margin:"10px 0 2px"}}>{c.name||""}</h1>
+          {(c.title||c.company) && <div className="muted">{[c.title,c.company].filter(Boolean).join(" · ")}</div>}
+          {c.location && <div className="muted" style={{fontSize:13}}>{c.location}</div>}
+        </div>
+        {c.bio && <p style={{textAlign:"center"}}>{c.bio}</p>}
+        <div className="pub-methods">
+          {(c.emails||[]).filter(Boolean).map((e,i)=> <a key={"e"+i} className="btn" href={"mailto:"+e}>✉︎ {e}</a>)}
+          {(c.phones||[]).filter(Boolean).map((p,i)=> <a key={"p"+i} className="btn" href={"tel:"+p}>☎︎ {p}</a>)}
+          {(c.links||[]).filter(l=>l&&l.url).map((l,i)=> <a key={"l"+i} className="btn" target="_blank" rel="noreferrer"
+              href={/^https?:/.test(l.url)?l.url:"https://"+l.url}>🔗 {l.label||l.url}</a>)}
+        </div>
+        <button className="btn primary" onClick={()=> downloadVCard(c)}>Save contact</button>
+
+        <div className="card" style={{marginTop:18}}>
+          {sent ? (
+            <div style={{textAlign:"center"}}><div className="glyph" style={{fontSize:32}}>✅</div>
+              <b>Thanks — {firstName} now has your info.</b></div>
+          ) : (
+            <div>
+              <div style={{fontWeight:600, marginBottom:8}}>Share your info back</div>
+              <input className="input" style={{marginBottom:8}} placeholder="Your name" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} />
+              <input className="input" style={{marginBottom:8}} type="email" placeholder="Email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} />
+              <input className="input" style={{marginBottom:8}} type="tel" placeholder="Phone" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} />
+              <textarea className="input" rows="2" style={{marginBottom:8}} placeholder="Note (optional)" value={form.note} onChange={e=>setForm({...form,note:e.target.value})} />
+              {err && <div className="err">{err}</div>}
+              <button className="btn primary" disabled={busy} onClick={submit}>{busy?"Sending…":"Send"}</button>
+            </div>
+          )}
+        </div>
+        <div className="pub-foot muted">Made with <a href="https://getinnerorbit.io" target="_blank" rel="noreferrer">Inner Orbit</a></div>
+      </div>
+    </div>
+  );
+}
+
+function CardEditor({ cfg, onAddLead, onClose }){
+  const [loading,setLoading] = useState(true);
+  const [slug,setSlug] = useState(null);
+  const [published,setPublished] = useState(false);
+  const [f,setF] = useState({ name:"", title:"", company:"", location:"", bio:"", accent:"",
+                              emails:[""], phones:[""], links:[{label:"",url:""}] });
+  const [leads,setLeads] = useState([]);
+  const [saving,setSaving] = useState(false);
+  const [msg,setMsg] = useState("");
+  const [tab,setTab] = useState("edit");   // edit | share | leads
+
+  useEffect(()=>{ let live=true;
+    (async ()=>{
+      try {
+        const c=await getCard(cfg); if(!live) return;
+        setSlug(c.slug); setPublished(!!c.published);
+        const d=c.data||{};
+        setF({ name:d.name||"", title:d.title||"", company:d.company||"", location:d.location||"",
+          bio:d.bio||"", accent:d.accent||"",
+          emails:(d.emails&&d.emails.length?d.emails:[""]),
+          phones:(d.phones&&d.phones.length?d.phones:[""]),
+          links:(d.links&&d.links.length?d.links:[{label:"",url:""}]) });
+      } catch(e){ if(live) setMsg("Couldn't load your card."); }
+      finally { if(live) setLoading(false); }
+      try { const L=await getCardLeads(cfg); if(live) setLeads(L||[]); } catch(e){}
+    })();
+    return ()=>{ live=false; };
+  },[]);  // eslint-disable-line
+
+  function toData(){
+    return { name:f.name.trim(), title:f.title.trim(), company:f.company.trim(), location:f.location.trim(),
+      bio:f.bio.trim(), accent:f.accent.trim(),
+      emails:f.emails.map(x=>x.trim()).filter(Boolean),
+      phones:f.phones.map(x=>x.trim()).filter(Boolean),
+      links:f.links.map(l=>({label:(l.label||"").trim(), url:(l.url||"").trim()})).filter(l=>l.url) };
+  }
+  async function save(pub){
+    setSaving(true); setMsg("");
+    try { const r=await saveCard(cfg, toData(), pub); setSlug(r.slug); setPublished(!!r.published);
+      setMsg(pub?"Published ✓":"Saved ✓"); if(pub) setTab("share"); }
+    catch(e){ setMsg("Save failed — try again."); }
+    finally { setSaving(false); }
+  }
+  async function acceptLead(l){ onAddLead(l.data); try{ await deleteCardLead(cfg,l.id); }catch(e){} setLeads(leads.filter(x=>x.id!==l.id)); }
+  async function dismissLead(l){ try{ await deleteCardLead(cfg,l.id); }catch(e){} setLeads(leads.filter(x=>x.id!==l.id)); }
+
+  const url = slug ? cardUrl(slug) : "";
+  function copyLink(){ try{ navigator.clipboard.writeText(url); setMsg("Link copied ✓"); }catch(e){} }
+  function shareLink(){ if(navigator.share){ navigator.share({ title:(f.name||"My card")+" — Inner Orbit", url }).catch(()=>{}); } else copyLink(); }
+
+  const setArr=(key,i,v)=> setF({...f, [key]: f[key].map((x,j)=> j===i?v:x) });
+  const addArr=(key,blank)=> setF({...f, [key]: [...f[key], blank] });
+  const rmArr=(key,i)=> setF({...f, [key]: (f[key].length>1 ? f[key].filter((_,j)=> j!==i) : f[key]) });
+
+  return (
+    <div className="overlay">
+      <div className="overlay-head">
+        <button className="icon-btn" onClick={onClose}>←</button>
+        <b>My card</b>
+        <button className="btn ghost" disabled={saving||loading} onClick={()=> save(published)}>{saving?"…":"Save"}</button>
+      </div>
+      <div className="seg" style={{margin:"10px 16px 0"}}>
+        <button className={tab==="edit"?"on":""} onClick={()=>setTab("edit")}>Edit</button>
+        <button className={tab==="share"?"on":""} onClick={()=>setTab("share")}>Share</button>
+        <button className={tab==="leads"?"on":""} onClick={()=>setTab("leads")}>Connections{leads.length?(" ("+leads.length+")"):""}</button>
+      </div>
+      <div className="overlay-body">
+        {loading ? <div className="muted">Loading…</div> : tab==="edit" ? (
+          <div>
+            <div className="field"><label>Name</label><input className="input" value={f.name} onChange={e=>setF({...f,name:e.target.value})} /></div>
+            <div className="field"><label>Title</label><input className="input" value={f.title} onChange={e=>setF({...f,title:e.target.value})} /></div>
+            <div className="field"><label>Company</label><input className="input" value={f.company} onChange={e=>setF({...f,company:e.target.value})} /></div>
+            <div className="field"><label>Location</label><input className="input" value={f.location} onChange={e=>setF({...f,location:e.target.value})} /></div>
+            <div className="field"><label>Bio</label><textarea className="input" rows="2" value={f.bio} onChange={e=>setF({...f,bio:e.target.value})} /></div>
+            <div className="field"><label>Emails to show</label>
+              {f.emails.map((e,i)=> <div key={i} className="row" style={{marginBottom:6}}>
+                <input className="input" value={e} onChange={ev=>setArr("emails",i,ev.target.value)} placeholder="name@example.com" />
+                <button className="icon-btn" onClick={()=>rmArr("emails",i)}>✕</button></div>)}
+              <button className="btn" style={{width:"auto"}} onClick={()=>addArr("emails","")}>+ Email</button></div>
+            <div className="field"><label>Phones to show</label>
+              {f.phones.map((p,i)=> <div key={i} className="row" style={{marginBottom:6}}>
+                <input className="input" value={p} onChange={ev=>setArr("phones",i,ev.target.value)} placeholder="phone" />
+                <button className="icon-btn" onClick={()=>rmArr("phones",i)}>✕</button></div>)}
+              <button className="btn" style={{width:"auto"}} onClick={()=>addArr("phones","")}>+ Phone</button></div>
+            <div className="field"><label>Links</label>
+              {f.links.map((l,i)=> <div key={i} className="row" style={{marginBottom:6}}>
+                <input className="input" style={{flex:"0 0 32%"}} value={l.label} onChange={ev=>setArr("links",i,{...l,label:ev.target.value})} placeholder="Label" />
+                <input className="input" value={l.url} onChange={ev=>setArr("links",i,{...l,url:ev.target.value})} placeholder="https://" />
+                <button className="icon-btn" onClick={()=>rmArr("links",i)}>✕</button></div>)}
+              <button className="btn" style={{width:"auto"}} onClick={()=>addArr("links",{label:"",url:""})}>+ Link</button></div>
+            <div className="field"><label>Accent color (optional)</label>
+              <input className="input" value={f.accent} onChange={e=>setF({...f,accent:e.target.value})} placeholder="#6c8cff" /></div>
+            {msg && <div className="muted" style={{marginBottom:8}}>{msg}</div>}
+            <button className="btn primary" disabled={saving} onClick={()=> save(true)}>{published?"Save & keep published":"Publish card"}</button>
+            {published && <div className="muted" style={{textAlign:"center",marginTop:8}}>Published — see the Share tab for your link & QR.</div>}
+          </div>
+        ) : tab==="share" ? (
+          <div style={{textAlign:"center"}}>
+            {!published ? <div className="notice">Your card isn’t published yet. Publish it on the Edit tab to get a shareable link.</div>
+             : !slug ? <div className="muted">Save first to get your link.</div>
+             : <div>
+                 <img src={qrImgUrl(url)} alt="Card QR code" style={{width:220,height:220,borderRadius:12,background:"#fff",padding:8}} />
+                 <div className="muted" style={{margin:"10px 0", wordBreak:"break-all"}}>{url}</div>
+                 <div className="row"><button className="btn" onClick={copyLink}>Copy link</button><button className="btn primary" onClick={shareLink}>Share</button></div>
+                 <a className="btn ghost" href={url} target="_blank" rel="noreferrer" style={{display:"inline-block",marginTop:8}}>Preview card ↗</a>
+                 {msg && <div className="muted" style={{marginTop:6}}>{msg}</div>}
+               </div>}
+          </div>
+        ) : (
+          <div>
+            {leads.length===0
+              ? <Placeholder glyph={"📇"} title="No new connections" note="When someone shares their info from your card, it lands here to review." />
+              : leads.map(l=> (
+                  <div key={l.id} className="card">
+                    <div style={{fontWeight:600}}>{(l.data&&l.data.name)||"(no name)"}</div>
+                    <div className="muted">{[l.data&&l.data.email, l.data&&l.data.phone].filter(Boolean).join(" · ")}</div>
+                    {l.data&&l.data.note && <div style={{marginTop:4}}>{l.data.note}</div>}
+                    <div className="row" style={{marginTop:8}}>
+                      <button className="btn primary" onClick={()=>acceptLead(l)}>Add to contacts</button>
+                      <button className="btn" onClick={()=>dismissLead(l)}>Dismiss</button>
+                    </div>
+                  </div>))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function App(){
   const [cfg,setCfg] = useState(()=> loadConfig());
   const [authed,setAuthed] = useState(()=>{ const c=loadConfig(); return configComplete(c) || !!c.offline; });
@@ -1618,6 +1908,18 @@ function App(){
     saveCollection("organizations", i>=0 ? arr.map(x=> x.id===o.id?o:x) : [o, ...arr]);
   }
   function deleteOrg(id){ saveCollection("organizations", (data.organizations||[]).filter(x=>x.id!==id)); }
+
+  // Accept a digital-card "connection" (lead) into contacts, tagged by source.
+  function addLeadContact(d){
+    d = d || {};
+    const c = { id:uid("c"), name:(d.name||"").trim()||"(no name)",
+      emails: d.email?[d.email]:[], phones: d.phone?[d.phone]:[], org_id:null,
+      title:"", location:"", tags:["Met via card"], how_we_met:"Digital business card",
+      birthday:"", notes:(d.note||""), cadence_days:null, last_interaction_at:null,
+      reachout_snooze_until:null, birthday_ack:null, created_at:todayISO(), updated_at:todayISO() };
+    upsertContact(c);
+    flash("Added to contacts");
+  }
 
   function onSaveContact(form){
     const base = (overlay && overlay.contact) || {};
@@ -1845,7 +2147,8 @@ function App(){
   else screen = <SettingsView cfg={cfg} onCfg={applyCfg} onLogout={signOutHard}
                     onCheckUpdate={checkUpdate} updMsg={updMsg} update={update} onApplyUpdate={doApplyUpdate}
                     syncUnsent={unsent} syncPushing={pushing} onRetrySync={flushUnsent}
-                    onImport={()=> setOverlay({type:"import"})} />;
+                    onImport={()=> setOverlay({type:"import"})}
+                    onCard={()=> setOverlay({type:"card"})} />;
 
   // A push that has come back and left work behind = a real problem, so say so. While a
   // push is still in flight we stay quiet (every save would otherwise flash a banner).
@@ -1914,6 +2217,9 @@ function App(){
       {overlay && overlay.type==="import" &&
         <ImportFlow existingContacts={data.contacts||[]} onApply={applyImport} onClose={()=> setOverlay(null)} />}
 
+      {overlay && overlay.type==="card" &&
+        <CardEditor cfg={cfg} onAddLead={addLeadContact} onClose={()=> setOverlay(null)} />}
+
       {overlay && overlay.type==="dealForm" &&
         <DealForm deal={overlay.deal} contacts={data.contacts||[]} orgs={data.organizations||[]}
           onSave={onSaveDeal}
@@ -1958,7 +2264,9 @@ function App(){
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+// Route: a `?card=<slug>` link renders the PUBLIC card page (no login); otherwise the app.
+const _cardSlug = new URLSearchParams(location.search).get("card");
+ReactDOM.createRoot(document.getElementById("root")).render(_cardSlug ? <PublicCard slug={_cardSlug} /> : <App />);
   </script>
 </body>
 </html>

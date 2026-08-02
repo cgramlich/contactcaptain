@@ -20,6 +20,7 @@ import sys
 import json
 import time
 import base64
+import secrets
 import logging
 import asyncio
 from contextlib import asynccontextmanager
@@ -522,6 +523,119 @@ async def push_unregister(
 
 
 # --------------------------------------------------------------------------- #
+# Digital business card — a public shareable card + a "connect" lead inbox.
+#   Owner endpoints need auth; the public card view + connect form do NOT (a
+#   visitor is anonymous). Routes ordered so /api/card/leads matches before
+#   /api/card/{slug}.
+# --------------------------------------------------------------------------- #
+class CardSaveRequest(BaseModel):
+    data: Dict[str, Any] = {}
+    published: bool = False
+
+
+class ConnectRequest(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    note: Optional[str] = None
+
+
+def _new_slug() -> str:
+    s = secrets.token_urlsafe(8).replace("-", "").replace("_", "")
+    return s[:12] if len(s) >= 8 else secrets.token_hex(5)
+
+
+@app.put("/api/card")
+async def save_card(req: CardSaveRequest, x_user_id: Optional[str] = Header(None),
+                    authorization: Optional[str] = Header(None)):
+    user_id = resolve_user_id(authorization, x_user_id)
+    try:
+        existing = supabase.table("cards").select("slug").eq("user_id", user_id).limit(1).execute()
+        slug = existing.data[0]["slug"] if existing.data else _new_slug()
+        supabase.table("cards").upsert(
+            {"user_id": user_id, "slug": slug, "data": req.data,
+             "published": bool(req.published), "updated_at": _now_iso()},
+            on_conflict="user_id",
+        ).execute()
+    except Exception as exc:
+        raise db_exc("upsert", "cards", exc)
+    return {"ok": True, "slug": slug, "published": bool(req.published), "data": req.data}
+
+
+@app.get("/api/card")
+async def get_my_card(x_user_id: Optional[str] = Header(None), authorization: Optional[str] = Header(None)):
+    user_id = resolve_user_id(authorization, x_user_id)
+    try:
+        rows = supabase.table("cards").select("slug,data,published").eq("user_id", user_id).limit(1).execute()
+    except Exception as exc:
+        raise db_exc("select", "cards", exc)
+    if not rows.data:
+        return {"slug": None, "published": False, "data": {}}
+    r = rows.data[0]
+    return {"slug": r["slug"], "published": r["published"], "data": r.get("data") or {}}
+
+
+@app.get("/api/card/leads")
+async def get_card_leads(x_user_id: Optional[str] = Header(None), authorization: Optional[str] = Header(None)):
+    user_id = resolve_user_id(authorization, x_user_id)
+    try:
+        rows = (supabase.table("card_leads").select("id,data,created_at")
+                .eq("user_id", user_id).order("created_at", desc=True).limit(500).execute())
+    except Exception as exc:
+        raise db_exc("select", "card_leads", exc)
+    return rows.data or []
+
+
+@app.delete("/api/card/leads/{lead_id}", status_code=204)
+async def delete_card_lead(lead_id: int, x_user_id: Optional[str] = Header(None),
+                           authorization: Optional[str] = Header(None)):
+    user_id = resolve_user_id(authorization, x_user_id)
+    try:
+        supabase.table("card_leads").delete().eq("id", lead_id).eq("user_id", user_id).execute()
+    except Exception as exc:
+        raise db_exc("delete", "card_leads", exc)
+
+
+@app.get("/api/card/{slug}")
+async def public_get_card(slug: str):
+    """PUBLIC — the shareable card. No auth. Returns only the owner-chosen fields."""
+    try:
+        rows = supabase.table("cards").select("data,published").eq("slug", slug).limit(1).execute()
+    except Exception as exc:
+        raise db_exc("select", "cards", exc)
+    if not rows.data or not rows.data[0].get("published"):
+        raise HTTPException(status_code=404, detail="Card not found")
+    return rows.data[0].get("data") or {}
+
+
+@app.post("/api/card/{slug}/connect")
+async def public_connect(slug: str, req: ConnectRequest):
+    """PUBLIC — a visitor shares their info; lands in the owner's lead inbox."""
+    check_rate_limit("card_connect", slug, limit=20, window_seconds=3600)
+    name = (req.name or "").strip()[:120]
+    email = (req.email or "").strip()[:200]
+    phone = (req.phone or "").strip()[:60]
+    note = (req.note or "").strip()[:1000]
+    if not (name or email or phone):
+        raise HTTPException(status_code=400, detail="Please share at least a name, email, or phone.")
+    try:
+        rows = supabase.table("cards").select("user_id,published").eq("slug", slug).limit(1).execute()
+        if not rows.data or not rows.data[0].get("published"):
+            raise HTTPException(status_code=404, detail="Card not found")
+        owner = rows.data[0]["user_id"]
+        supabase.table("card_leads").insert(
+            {"user_id": owner, "slug": slug,
+             "data": {"name": name, "email": email, "phone": phone, "note": note},
+             "created_at": _now_iso()},
+        ).execute()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise db_exc("insert", "card_leads", exc)
+    return {"ok": True}
+
+
+# --------------------------------------------------------------------------- #
 # Account deletion — privacy-critical; wipes all of the user's rows.
 # --------------------------------------------------------------------------- #
 @app.post("/api/account/delete")
@@ -532,7 +646,7 @@ async def account_delete(
     user_id = resolve_user_id(authorization, x_user_id)
     check_rate_limit("account_delete", user_id, limit=5, window_seconds=3600)
     errors = []
-    for name in list(COLLECTIONS) + ["device_tokens", "ai_usage"]:
+    for name in list(COLLECTIONS) + ["device_tokens", "ai_usage", "cards", "card_leads"]:
         try:
             supabase.table(name).delete().eq("user_id", user_id).execute()
         except Exception as exc:

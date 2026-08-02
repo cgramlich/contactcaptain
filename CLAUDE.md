@@ -43,6 +43,12 @@ backend, deployed to the web; Capacitor native build is future.
   per user per collection (`user_id` PK, `data` jsonb). Client owns ordering.
 - AI: `POST /api/ai/relay` (task→model routing to Haiku, metering, monthly cost breaker).
   Free + capped. NO domain text injected server-side.
+- Digital card: authed `PUT/GET /api/card` (owner's card, one per user → `cards` table:
+  `user_id` PK, unguessable `slug`, `data` jsonb, `published`), `GET /api/card/leads` +
+  `DELETE /api/card/leads/{id}` (review inbox → `card_leads` table). **PUBLIC (no auth):**
+  `GET /api/card/{slug}` (published card only) and `POST /api/card/{slug}/connect`
+  (rate-limited; a visitor's info → the owner's lead inbox). Routes ordered so
+  `/api/card/leads` matches before `/api/card/{slug}`.
 - Push: `/api/push/register|unregister` — **gated OFF** (frontend `PUSH_ENABLED=false`) until Firebase.
 - `POST /api/account/delete` wipes all of a user's rows.
 - Config is blank-safe: numeric/CORS env vars fall back via `or default` so empty Railway vars
@@ -62,6 +68,11 @@ backend, deployed to the web; Capacitor native build is future.
 - `SUPABASE_URL` + `SUPABASE_PUBLISHABLE_KEY` (the public `sb_publishable_…` key) for auth.
 - Branding routed through `BRAND` + the CSS `:root` palette (drop-in swap principle).
 - Offline mode: an "Explore offline (no account)" path appears only when `SUPABASE_URL` is unset.
+- **Public card route:** a `?card=<slug>` URL renders `<PublicCard>` (login-free) instead of
+  `<App>` — the branch is at the `ReactDOM.render` call. Owner editor is `<CardEditor>` (Settings
+  → "My digital card"): edit/publish, Share tab (link + QR + Web Share), Connections inbox
+  (accept → contact tagged "Met via card", or dismiss). QR uses a public image service in V1
+  (card URL is public by design) — vendor/inline before the native build.
 - **Supabase auth is called as raw REST** (`supabasePassword` → `/auth/v1/token`). The
   `supabase-js` CDN library is deliberately NOT loaded — nothing to pin or upgrade here.
 - **Saves are optimistic with retry.** `saveCollection` writes local state + localStorage,
