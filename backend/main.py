@@ -46,7 +46,7 @@ except Exception:
 # Logging
 # --------------------------------------------------------------------------- #
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-logger = logging.getLogger("orbit")
+logger = logging.getLogger("contactcaptain")
 
 
 def _env_float(name: str, default: float) -> float:
@@ -104,6 +104,9 @@ MAX_TOKENS_CEILING = _env_int("AI_MAX_TOKENS_CEILING", 8192)
 ALLOWED_ORIGINS = [
     o.strip()
     for o in (os.getenv("ALLOWED_ORIGINS") or (
+        "https://contactcaptain.com,https://www.contactcaptain.com,"
+        # getinnerorbit.io kept: the previous domain, still live and still the host of
+        # any card link shared before the 2026-08-19 move to contactcaptain.com.
         "https://getinnerorbit.io,https://www.getinnerorbit.io,https://app.getinnerorbit.io,"
         "https://cgramlich.github.io,"
         "capacitor://localhost,https://localhost,http://localhost,"
@@ -114,7 +117,7 @@ ALLOWED_ORIGINS = [
 ]
 
 # --------------------------------------------------------------------------- #
-# Collections — Orbit's CRM domain.
+# Collections — ContactCaptain's CRM domain.
 #   Whole-collection JSONB model: one row per user per collection, the client
 #   reads/writes the entire collection at once (the client is the source of
 #   truth for ordering). Arrays default to []; "meta" is a singleton object {}.

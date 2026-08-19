@@ -15,5 +15,5 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 
 with socketserver.TCPServer(("", PORT), Handler) as httpd:
-    print(f"orbit dev server on http://localhost:{PORT}")
+    print(f"contactcaptain dev server on http://localhost:{PORT}")
     httpd.serve_forever()

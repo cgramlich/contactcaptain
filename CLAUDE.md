@@ -64,14 +64,14 @@ toggleable **deals** layer. Single-file React-via-CDN + Babel PWA, FastAPI + Sup
 backend, deployed to the web; Capacitor native build is future.
 
 ## Live URLs
-- **App (frontend):** https://getinnerorbit.io — GitHub Pages from `cgramlich/inner-orbit`,
+- **App (frontend):** https://contactcaptain.com — GitHub Pages from `cgramlich/contactcaptain`,
   repo **root**, custom domain via `CNAME` file. Porkbun DNS: 4 A records → GitHub Pages
   (185.199.108–111.153) + `www` CNAME → `cgramlich.github.io`.
 - **API (backend):** https://inner-orbit-production.up.railway.app — Railway, **root dir =
   `backend/`**, auto-deploys on push to `main`. Health: `GET /api/health`.
 - **Supabase project:** `efzuuqhraaxwsrkqfavn` (org Team CG, Pro). Asymmetric **ES256** JWT
   signing keys (backend verifies via JWKS — no JWT secret needed).
-- **appId (native, not yet published):** `com.orbitcrm.app`.
+- **appId (native, not yet published):** `com.contactcaptain.app`.
 
 ## Versioning (do NOT hardcode a version in docs)
 - Source of truth = `APP_VERSION` + `BUILD` in `index.html` and `VERSION` in `sw.js`
@@ -108,7 +108,7 @@ backend, deployed to the web; Capacitor native build is future.
   legacy keys are disabled on this project). Full DB access, bypasses RLS. SECRET.
 - `ANTHROPIC_API_KEY` — enables `/api/ai/relay`; blank = AI disabled.
 - `SUPABASE_JWT_SECRET` — leave blank (ES256/JWKS).
-- Optional: `ALLOWED_ORIGINS` (defaults already include getinnerorbit.io + the Pages URL —
+- Optional: `ALLOWED_ORIGINS` (defaults already include contactcaptain.com + the Pages URL —
   prefer leaving unset), `AI_MONTHLY_BUDGET_USD`, `AI_MAX_TOKENS_CEILING`.
 
 ## Frontend (`index.html`)

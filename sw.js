@@ -1,6 +1,6 @@
-/* Orbit service worker — OFFLINE PHASE 1 (app shell + data reads).
+/* ContactCaptain service worker — OFFLINE PHASE 1 (app shell + data reads).
    ===========================================================================
-   Adapted from MenuCaptain's sw.js. Same rules, minus map tiles (Orbit V1 has
+   Adapted from MenuCaptain's sw.js. Same rules, minus map tiles (ContactCaptain V1 has
    no maps) and minus Leaflet from the critical assets.
 
    The one rule that matters most: never trap a user on a stale build.
@@ -20,10 +20,10 @@
    - everything else          -> default network
 */
 
-const VERSION     = "0.5.0";                 // keep in lockstep with APP_VERSION
-const SHELL_CACHE = "orbit-shell-" + VERSION;
-const ASSET_CACHE = "orbit-assets-" + VERSION;
-const DATA_CACHE  = "orbit-data-v1";         // user collections; un-versioned so it
+const VERSION     = "0.5.1";                 // keep in lockstep with APP_VERSION
+const SHELL_CACHE = "cc-shell-" + VERSION;
+const ASSET_CACHE = "cc-assets-" + VERSION;
+const DATA_CACHE  = "cc-data-v1";         // user collections; un-versioned so it
                                              // survives app updates (only a manual
                                              // clearCache / logout wipes it)
 const SHELL_URL   = "/";                     // canonical key for the app document

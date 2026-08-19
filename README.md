@@ -5,14 +5,14 @@ optional lightweight deals layer) in the **Forever Apps** portfolio, built on th
 MenuCaptain stack: single-file React-via-CDN + Babel PWA, FastAPI + Supabase
 backend, Capacitor native wrap, service-worker offline.
 
-- **Name:** ContactCaptain  ·  **Domain:** getinnerorbit.io
-- **appId:** `com.orbitcrm.app` (invisible to users; not yet published — can switch to `com.innerorbit.app` before first publish if desired)
+- **Name:** ContactCaptain  ·  **Domain:** contactcaptain.com (previous getinnerorbit.io still live)
+- **appId:** `com.contactcaptain.app` (not yet published — becomes permanent at first store submission)
 - **Publisher:** MilSpo Life LLC (future Forever Apps)
 - **Scope:** see `Dropbox\My AI\CG Apps\Personal CRM\Personal CRM Architecture & Design\SCOPE-crm.md`
 
 ## Layout
 ```
-orbit-crm/
+contactcaptain (local dir: orbit-crm)
   index.html            # the app (single-file PWA)
   CLAUDE.md             # architecture / endpoints / env / conventions (read this first)
   sw.js                 # service worker (offline shell + data reads)
@@ -43,7 +43,7 @@ Never hardcode brand text/colors. Route through `APP_NAME`/`BRAND` config + an
 ## Status — LIVE on the web
 ContactCaptain is deployed and in use. (Deployed version is sourced from `APP_VERSION` in
 `index.html` + the `/api/health` endpoint — never hardcoded here.)
-- **App:** https://getinnerorbit.io — GitHub Pages (repo root), HTTPS
+- **App:** https://contactcaptain.com — GitHub Pages (repo root), HTTPS
 - **API:** https://inner-orbit-production.up.railway.app — Railway (`backend/`); health at `/api/health`
 - **DB / Auth:** Supabase (ES256 / JWKS); schema in `backend/schema.sql`
 
@@ -58,7 +58,7 @@ Apple contacts + Capacitor native build + store listings.
 See **`CLAUDE.md`** for architecture, endpoints, env vars, and conventions.
 
 ## Run it
-- **Live app:** https://getinnerorbit.io
+- **Live app:** https://contactcaptain.com
 - **Local frontend:** `python dev_server.py` → http://localhost:8300 (or any static host).
   "Explore offline (no account)" appears only while `SUPABASE_URL` is unset.
 - **Local backend:** see `backend/README.md` (`uvicorn main:app` with `backend/.env`).

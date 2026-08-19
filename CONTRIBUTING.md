@@ -7,7 +7,7 @@ secrets or the live site. It assumes you're new to GitHub — no command line re
 
 **`main` is the live site.** Anything merged into `main` deploys automatically:
 
-- the app → https://getinnerorbit.io (GitHub Pages)
+- the app → https://contactcaptain.com (GitHub Pages)
 - the API → Railway (`backend/`)
 
 So we never commit straight to `main`. **Work on a branch, open a Pull Request (PR),
@@ -28,7 +28,7 @@ get it reviewed, then merge.** That way nothing reaches real users until it's ap
 
 ## Easiest path: edit in the browser (no installs)
 
-1. Go to https://github.com/cgramlich/inner-orbit
+1. Go to https://github.com/cgramlich/contactcaptain
 2. Press the **`.`** key (or change the URL from `github.com` to `github.dev`).
    A full VS Code editor opens in your browser.
 3. **Make a branch first**: click the branch name (bottom-left in github.dev, or the
@@ -42,8 +42,8 @@ get it reviewed, then merge.** That way nothing reaches real users until it's ap
 The app is a single HTML file — no build step, no npm install.
 
 ```bash
-git clone https://github.com/cgramlich/inner-orbit.git
-cd inner-orbit
+git clone https://github.com/cgramlich/contactcaptain.git
+cd contactcaptain
 python dev_server.py        # serves on http://localhost:8300
 ```
 

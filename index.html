@@ -246,7 +246,7 @@
     /* Apply saved theme before first paint (no flash). Dark is the default. */
     (function(){
       try {
-        var t = localStorage.getItem('orbit_theme');
+        var t = localStorage.getItem('cc_theme') || localStorage.getItem('orbit_theme');
         if (t && t !== 'dark') document.documentElement.setAttribute('data-theme', t);
       } catch(e){}
     })();
@@ -265,11 +265,11 @@ const { useState, useEffect, useRef, useCallback } = React;
 // User-facing semantic version (MAJOR.MINOR.PATCH). This is what shows in Settings,
 // the update prompts, and the footers - a real version, not a build date. Bump it on
 // every deploy: PATCH for a fix, MINOR for a feature, MAJOR for a big milestone.
-const APP_VERSION = "0.5.0";
+const APP_VERSION = "0.5.1";
 // Internal build stamp. Bump on every deploy too (today's date + a counter). This is
 // what the updater actually COMPARES (it's monotonic, so detection never misfires) and
 // what cache-busts the reload; APP_VERSION above is the friendly label shown to users.
-const BUILD = "2026-08-19.1";
+const BUILD = "2026-08-19.2";
 const BRAND = { name: "ContactCaptain", tagline: "Stay close to the people in your orbit." };
 
 // Hosted backend base (Railway). Overridable per-user in Settings.
@@ -279,8 +279,14 @@ const API_BASE_DEFAULT = "https://inner-orbit-production.up.railway.app";
 const SUPABASE_URL = "https://efzuuqhraaxwsrkqfavn.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_IjI9GIq0HirrfCUbcRm3AQ_2izsa8b7";
 
-const CFG_KEY  = "orbit_config";
-const DATA_KEY = "orbit_data";
+// localStorage keys. Renamed orbit_* -> cc_* with the 2026-08-19 ContactCaptain rename.
+// The LEGACY_* names are still read once as a fallback (see loadConfig/loadCache) so an
+// existing install keeps its session instead of being silently signed out on upgrade.
+// Safe to delete the legacy fallback once every device has opened the app after that date.
+const CFG_KEY  = "cc_config";
+const DATA_KEY = "cc_data";
+const LEGACY_CFG_KEY  = "orbit_config";
+const LEGACY_DATA_KEY = "orbit_data";
 
 // CRM collections (must match the backend COLLECTIONS).
 const ARRAY_COLLECTIONS  = ["contacts","organizations","interactions","tasks","deals"];
@@ -348,13 +354,19 @@ function fmtMoney(n){ const v=Number(n); if(!v) return ""; return "$"+v.toLocale
 
 /* ---- config + cache (localStorage) ----------------------------------- */
 function loadConfig(){
-  try { return JSON.parse(localStorage.getItem(CFG_KEY)||"{}") || {}; } catch(e){ return {}; }
+  try {
+    const raw = localStorage.getItem(CFG_KEY) || localStorage.getItem(LEGACY_CFG_KEY);
+    return JSON.parse(raw||"{}") || {};
+  } catch(e){ return {}; }
 }
 function saveConfig(cfg){
   try { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); } catch(e){}
 }
 function loadCache(){
-  try { return JSON.parse(localStorage.getItem(DATA_KEY)||"null"); } catch(e){ return null; }
+  try {
+    const raw = localStorage.getItem(DATA_KEY) || localStorage.getItem(LEGACY_DATA_KEY);
+    return JSON.parse(raw||"null");
+  } catch(e){ return null; }
 }
 function saveCache(payload){
   try { localStorage.setItem(DATA_KEY, JSON.stringify(payload)); } catch(e){}
@@ -369,7 +381,12 @@ function emptyData(){
 let _refreshPromise = null;
 
 function signOutHard(){
-  try { localStorage.removeItem(CFG_KEY); localStorage.removeItem(DATA_KEY); } catch(e){}
+  // The legacy orbit_* keys MUST be cleared too: loadConfig falls back to them, so leaving
+  // them behind would resurrect the session we just signed out of.
+  try {
+    localStorage.removeItem(CFG_KEY);        localStorage.removeItem(DATA_KEY);
+    localStorage.removeItem(LEGACY_CFG_KEY); localStorage.removeItem(LEGACY_DATA_KEY);
+  } catch(e){}
   try {
     if (navigator.serviceWorker && navigator.serviceWorker.controller){
       navigator.serviceWorker.controller.postMessage({ type:"clearCache" });
@@ -518,7 +535,13 @@ async function publicConnect(slug, body){
   if (!res.ok) throw new Error(d.detail || ("connect "+res.status));
   return d;
 }
-function cardUrl(slug){ return "https://getinnerorbit.io/?card=" + encodeURIComponent(slug); }
+const SITE_URL = "https://contactcaptain.com";
+// Built from the CURRENT origin so a domain change can never strand shared card links;
+// SITE_URL is only the fallback for non-web contexts (Capacitor serves from localhost).
+function cardUrl(slug){
+  const origin = (location.protocol === "http:" || location.protocol === "https:") ? location.origin : SITE_URL;
+  return origin + "/?card=" + encodeURIComponent(slug);
+}
 // QR: V1 uses a public image service (the card URL is public by design). TODO: vendor/
 // inline a QR generator before the native build so nothing loads off-CDN there.
 function qrImgUrl(url){ return "https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data=" + encodeURIComponent(url); }
@@ -1037,7 +1060,7 @@ function SettingsView({ cfg, onCfg, onLogout, onCheckUpdate, updMsg, update, onA
   const theme = cfg.theme || "dark";
   function setTheme(t){
     const next = {...cfg, theme:t}; onCfg(next);
-    try { localStorage.setItem("orbit_theme", t); } catch(e){}
+    try { localStorage.setItem("cc_theme", t); } catch(e){}
     if (t==="dark") document.documentElement.removeAttribute("data-theme");
     else document.documentElement.setAttribute("data-theme", t);
   }
@@ -1666,7 +1689,7 @@ function PublicCard({ slug }){
             </div>
           )}
         </div>
-        <div className="pub-foot muted">Made with <a href="https://getinnerorbit.io" target="_blank" rel="noreferrer">ContactCaptain</a></div>
+        <div className="pub-foot muted">Made with <a href={SITE_URL} target="_blank" rel="noreferrer">ContactCaptain</a></div>
       </div>
     </div>
   );
