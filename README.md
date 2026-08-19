@@ -5,7 +5,7 @@ optional lightweight deals layer) in the **Forever Apps** portfolio, built on th
 MenuCaptain stack: single-file React-via-CDN + Babel PWA, FastAPI + Supabase
 backend, Capacitor native wrap, service-worker offline.
 
-- **Name:** ContactCaptain  ·  **Domain:** contactcaptain.com (previous getinnerorbit.io still live)
+- **Name:** ContactCaptain  ·  **Domain:** contactcaptain.com (previous getinnerorbit.io now 404s — Pages serves one custom domain)
 - **appId:** `com.contactcaptain.app` (not yet published — becomes permanent at first store submission)
 - **Publisher:** MilSpo Life LLC (future Forever Apps)
 - **Scope:** see `Dropbox\My AI\CG Apps\Personal CRM\Personal CRM Architecture & Design\SCOPE-crm.md`
