@@ -1,11 +1,11 @@
-# Inner Orbit — Personal CRM
+# ContactCaptain — Personal CRM
 
 Stay close to the people in your orbit. A personal relationship manager (with an
 optional lightweight deals layer) in the **Forever Apps** portfolio, built on the
 MenuCaptain stack: single-file React-via-CDN + Babel PWA, FastAPI + Supabase
 backend, Capacitor native wrap, service-worker offline.
 
-- **Name:** Inner Orbit  ·  **Domain:** getinnerorbit.io
+- **Name:** ContactCaptain  ·  **Domain:** getinnerorbit.io
 - **appId:** `com.orbitcrm.app` (invisible to users; not yet published — can switch to `com.innerorbit.app` before first publish if desired)
 - **Publisher:** MilSpo Life LLC (future Forever Apps)
 - **Scope:** see `Dropbox\My AI\CG Apps\Personal CRM\Personal CRM Architecture & Design\SCOPE-crm.md`
@@ -41,7 +41,7 @@ Never hardcode brand text/colors. Route through `APP_NAME`/`BRAND` config + an
 ```
 
 ## Status — LIVE on the web
-Inner Orbit is deployed and in use. (Deployed version is sourced from `APP_VERSION` in
+ContactCaptain is deployed and in use. (Deployed version is sourced from `APP_VERSION` in
 `index.html` + the `/api/health` endpoint — never hardcoded here.)
 - **App:** https://getinnerorbit.io — GitHub Pages (repo root), HTTPS
 - **API:** https://inner-orbit-production.up.railway.app — Railway (`backend/`); health at `/api/health`

@@ -6,11 +6,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Inner Orbit" />
+  <meta name="apple-mobile-web-app-title" content="ContactCaptain" />
   <meta name="theme-color" content="#0e1116" />
   <link rel="manifest" href="/manifest.json" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-  <title>Inner Orbit</title>
+  <title>ContactCaptain</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -265,12 +265,12 @@ const { useState, useEffect, useRef, useCallback } = React;
 // User-facing semantic version (MAJOR.MINOR.PATCH). This is what shows in Settings,
 // the update prompts, and the footers - a real version, not a build date. Bump it on
 // every deploy: PATCH for a fix, MINOR for a feature, MAJOR for a big milestone.
-const APP_VERSION = "0.4.0";
+const APP_VERSION = "0.5.0";
 // Internal build stamp. Bump on every deploy too (today's date + a counter). This is
 // what the updater actually COMPARES (it's monotonic, so detection never misfires) and
 // what cache-busts the reload; APP_VERSION above is the friendly label shown to users.
-const BUILD = "2026-08-01.2";
-const BRAND = { name: "Inner Orbit", tagline: "Stay close to the people in your orbit." };
+const BUILD = "2026-08-19.1";
+const BRAND = { name: "ContactCaptain", tagline: "Stay close to the people in your orbit." };
 
 // Hosted backend base (Railway). Overridable per-user in Settings.
 const API_BASE_DEFAULT = "https://inner-orbit-production.up.railway.app";
@@ -1666,7 +1666,7 @@ function PublicCard({ slug }){
             </div>
           )}
         </div>
-        <div className="pub-foot muted">Made with <a href="https://getinnerorbit.io" target="_blank" rel="noreferrer">Inner Orbit</a></div>
+        <div className="pub-foot muted">Made with <a href="https://getinnerorbit.io" target="_blank" rel="noreferrer">ContactCaptain</a></div>
       </div>
     </div>
   );
@@ -1720,7 +1720,7 @@ function CardEditor({ cfg, onAddLead, onClose }){
 
   const url = slug ? cardUrl(slug) : "";
   function copyLink(){ try{ navigator.clipboard.writeText(url); setMsg("Link copied ✓"); }catch(e){} }
-  function shareLink(){ if(navigator.share){ navigator.share({ title:(f.name||"My card")+" — Inner Orbit", url }).catch(()=>{}); } else copyLink(); }
+  function shareLink(){ if(navigator.share){ navigator.share({ title:(f.name||"My card")+" — ContactCaptain", url }).catch(()=>{}); } else copyLink(); }
 
   const setArr=(key,i,v)=> setF({...f, [key]: f[key].map((x,j)=> j===i?v:x) });
   const addArr=(key,blank)=> setF({...f, [key]: [...f[key], blank] });

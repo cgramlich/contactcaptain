@@ -1,6 +1,6 @@
 {
   "appId": "com.orbitcrm.app",
-  "appName": "Inner Orbit",
+  "appName": "ContactCaptain",
   "webDir": "www",
   "server": {
     "androidScheme": "https"

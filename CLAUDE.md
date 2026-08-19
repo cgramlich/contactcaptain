@@ -1,4 +1,4 @@
-# Inner Orbit — CLAUDE.md
+# ContactCaptain — CLAUDE.md
 
 Personal CRM in the **Forever Apps** portfolio (publisher: MilSpo Life LLC). Built on the
 MenuCaptain stack. This file is auto-read at session start — keep it TRUE. If you change an
@@ -88,8 +88,9 @@ backend, deployed to the web; Capacitor native build is future.
 - Data: **generic whole-collection API** — `GET/PUT /api/collection/{name}` where name ∈
   `contacts, organizations, interactions, tasks, deals` (arrays) and `meta` (object). One row
   per user per collection (`user_id` PK, `data` jsonb). Client owns ordering.
-- AI: `POST /api/ai/relay` (task→model routing to Haiku, metering, monthly cost breaker).
-  Free + capped. NO domain text injected server-side.
+- AI: `POST /api/ai/relay` (task→model routing, metering, monthly cost breaker). **Sonnet is
+  the portfolio floor — no task routes to Haiku** (enforced by the pre-push gate). Free +
+  capped. NO domain text injected server-side.
 - Digital card: authed `PUT/GET /api/card` (owner's card, one per user → `cards` table:
   `user_id` PK, unguessable `slug`, `data` jsonb, `published`), `GET /api/card/leads` +
   `DELETE /api/card/leads/{id}` (review inbox → `card_leads` table). **PUBLIC (no auth):**

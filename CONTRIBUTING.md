@@ -1,4 +1,4 @@
-# Contributing to Inner Orbit
+# Contributing to ContactCaptain
 
 Welcome! This guide gets a second developer productive without touching production
 secrets or the live site. It assumes you're new to GitHub — no command line required.

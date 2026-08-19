@@ -1,5 +1,5 @@
 """
-Orbit (Personal CRM) — FastAPI backend.
+ContactCaptain (Personal CRM) — FastAPI backend.
 
 Adapted from the MenuCaptain backend (the Forever Apps reference plumbing):
   - Supabase Auth via Bearer JWT (verified locally against JWKS, ES256).
@@ -125,15 +125,23 @@ COLLECTIONS = ARRAY_COLLECTIONS + OBJECT_COLLECTIONS
 
 # --------------------------------------------------------------------------- #
 # AI task -> model routing. The server owns the model choice; the client's
-# `model` is advisory. Haiku is plenty for these short text tasks; bump to
-# Sonnet per-task later if drafting quality needs it.
+# `model` is advisory.
+#
+# SONNET IS THE PORTFOLIO FLOOR. Every task routes Sonnet or above; there are no
+# Haiku routes anywhere in the portfolio. These three tasks were on Haiku until
+# 2026-08-16, reasoned locally as "Haiku is plenty for these short text tasks" -
+# which is a sensible-sounding call that nonetheless contradicts a standing
+# decision the surrounding code gave no hint of. The gate now enforces it (B6).
+#
+# HAIKU stays defined and priced because it remains SELECTABLE via the allow-list
+# below; it is simply never what a task routes to.
 # --------------------------------------------------------------------------- #
 HAIKU = "claude-haiku-4-5-20251001"
 SONNET = "claude-sonnet-4-6"
 AI_MODELS = {
-    "summarize_contact": HAIKU,   # condense an interaction history
-    "draft_message": HAIKU,       # write a check-in / follow-up message
-    "reconnect_opener": HAIKU,    # suggested opener for a reconnect nudge
+    "summarize_contact": SONNET,   # condense an interaction history
+    "draft_message": SONNET,       # write a check-in / follow-up message
+    "reconnect_opener": SONNET,    # suggested opener for a reconnect nudge
 }
 ALLOWED_MODEL_PREFIXES = ("claude-haiku-4-5", "claude-sonnet-4", "claude-opus-4")
 
@@ -159,7 +167,7 @@ _jwks_client: Optional[PyJWKClient] = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global supabase, anthropic_client, _jwks_client
-    logger.info(f"[STARTUP] Orbit backend v{APP_VERSION} env={APP_ENV}")
+    logger.info(f"[STARTUP] ContactCaptain backend v{APP_VERSION} env={APP_ENV}")
 
     if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
         logger.error("[STARTUP] SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing")
@@ -186,7 +194,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Orbit CRM API", version=APP_VERSION, lifespan=lifespan)
+app = FastAPI(title="ContactCaptain API", version=APP_VERSION, lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -278,7 +286,7 @@ def check_rate_limit(action: str, user_id: str, limit: int, window_seconds: int)
 @app.get("/")
 @app.get("/api/health")
 async def health():
-    return {"ok": True, "app": "orbit", "version": APP_VERSION, "env": APP_ENV,
+    return {"ok": True, "app": "contactcaptain", "version": APP_VERSION, "env": APP_ENV,
             "ai": "configured" if anthropic_client else "not_configured"}
 
 
