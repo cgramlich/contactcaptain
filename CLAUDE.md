@@ -76,6 +76,21 @@ backend, deployed to the web; Capacitor native build is future.
   signing keys (backend verifies via JWKS — no JWT secret needed).
 - **appId (native, not yet published):** `com.contactcaptain.app`.
 
+## Email (Supabase auth mail via Resend SMTP) — live 2026-08-19
+Auth email (confirmation, password reset, magic links) is sent by **Supabase through Resend
+SMTP**, not Supabase's built-in sender. The built-in one is testing-only: its rate limit is a
+few messages per hour and, when hit, **Supabase rejects the signup outright** — the symptom is
+"account created but no email" when in fact no user row was created at all.
+
+- Resend domain: **contactcaptain.com** (verified). Sender: `no-reply@contactcaptain.com`.
+- Supabase → Authentication → Emails → SMTP: host `smtp.resend.com`, port 587, username is the
+  literal string **`resend`**, password = a Resend API key (`re_…`, secret, not in this repo).
+- DNS at Porkbun: DKIM `resend._domainkey`, plus MX + SPF on the **`send`** subdomain. Resend
+  puts its bounce MX on `send.<domain>` by design, so the ROOT MX (Porkbun email forwarding,
+  `fwd1/fwd2.porkbun.com`) is never touched. Do not "fix" the root MX to point at Resend.
+- Raise Authentication → Rate Limits after switching; the low default is sized for the built-in sender.
+- Delivery log + debugging: the Resend dashboard → Emails.
+
 ## Versioning (do NOT hardcode a version in docs)
 - Source of truth = `APP_VERSION` + `BUILD` in `index.html` and `VERSION` in `sw.js`
   (keep all three in **lockstep**), plus the deployed `/api/health` `version` field.
