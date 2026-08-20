@@ -265,11 +265,11 @@ const { useState, useEffect, useRef, useCallback } = React;
 // User-facing semantic version (MAJOR.MINOR.PATCH). This is what shows in Settings,
 // the update prompts, and the footers - a real version, not a build date. Bump it on
 // every deploy: PATCH for a fix, MINOR for a feature, MAJOR for a big milestone.
-const APP_VERSION = "0.5.1";
+const APP_VERSION = "0.6.0";
 // Internal build stamp. Bump on every deploy too (today's date + a counter). This is
 // what the updater actually COMPARES (it's monotonic, so detection never misfires) and
 // what cache-busts the reload; APP_VERSION above is the friendly label shown to users.
-const BUILD = "2026-08-19.2";
+const BUILD = "2026-08-19.3";
 const BRAND = { name: "ContactCaptain", tagline: "Stay close to the people in your orbit." };
 
 // Hosted backend base (Railway). Overridable per-user in Settings.
@@ -438,6 +438,60 @@ async function supabasePassword(grant, email, password){
   });
   const data = await res.json().catch(()=> ({}));
   if (!res.ok) throw new Error(data.error_description || data.msg || data.error || ("Auth failed ("+res.status+")"));
+  return data;
+}
+
+/* ---- password recovery ----------------------------------------------
+   Supabase mails a link back to this app; the session arrives in the URL
+   HASH (#access_token=...&type=recovery), never the query string. The hash
+   is stripped as soon as it is read so a shoulder-surfer or a copied URL
+   cannot reuse a live token. Requires Supabase Auth -> URL Configuration to
+   point Site URL / Redirect URLs at this app; the shipped default is
+   http://localhost:3000, which silently sends every link nowhere. */
+async function sendRecoveryEmail(email){
+  if (!SUPABASE_URL) throw new Error("Supabase isn't configured yet.");
+  const res = await fetch(SUPABASE_URL + "/auth/v1/recover", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "apikey":SUPABASE_PUBLISHABLE_KEY },
+    body:JSON.stringify({ email, redirect_to: location.origin + location.pathname }),
+  });
+  // Deliberately NOT surfacing "no such user": that would let anyone probe which
+  // addresses have accounts. The UI says "if that address has an account..." instead.
+  if (!res.ok && res.status !== 422){
+    const d = await res.json().catch(()=> ({}));
+    throw new Error(d.error_description || d.msg || ("Couldn't send the reset email (" + res.status + ")"));
+  }
+}
+
+// Read (and immediately clear) a recovery session from the URL hash.
+// Returns { token } on success, { error } for an expired/used link, or null.
+function readRecoveryFromHash(){
+  const h = (location.hash || "").replace(/^#/, "");
+  if (!h) return null;
+  const p = new URLSearchParams(h);
+  const clear = ()=>{ try { history.replaceState(null, "", location.pathname + location.search); } catch(e){} };
+  if (p.get("error") || p.get("error_description")){
+    const msg = p.get("error_description") || p.get("error");
+    clear();
+    return { error: decodeURIComponent(String(msg).replace(/\+/g, " ")) };
+  }
+  if (p.get("type") === "recovery" && p.get("access_token")){
+    const token = p.get("access_token");
+    clear();
+    return { token };
+  }
+  return null;
+}
+
+async function updatePassword(accessToken, newPassword){
+  const res = await fetch(SUPABASE_URL + "/auth/v1/user", {
+    method:"PUT",
+    headers:{ "Content-Type":"application/json", "apikey":SUPABASE_PUBLISHABLE_KEY,
+              "Authorization":"Bearer " + accessToken },
+    body:JSON.stringify({ password: newPassword }),
+  });
+  const data = await res.json().catch(()=> ({}));
+  if (!res.ok) throw new Error(data.error_description || data.msg || data.error || ("Couldn't set the password (" + res.status + ")"));
   return data;
 }
 
@@ -657,13 +711,25 @@ function PwInput({ value, onChange, placeholder, autoComplete, onEnter }){
   );
 }
 
-function AuthScreen({ onSignedIn, onExplore }){
+function AuthScreen({ onSignedIn, onExplore, notice }){
   const [mode,setMode] = useState("signin");
   const [email,setEmail] = useState("");
   const [pw,setPw] = useState("");
   const [busy,setBusy] = useState(false);
   const [err,setErr] = useState("");
-  const [info,setInfo] = useState("");
+  const [info,setInfo] = useState(notice || "");   // e.g. "Password updated - sign in..."
+
+  async function forgot(){
+    const addr = email.trim();
+    if (!addr){ setErr("Enter your email address first, then tap Forgot password."); return; }
+    setErr(""); setInfo(""); setBusy(true);
+    try {
+      await sendRecoveryEmail(addr);
+      // Same message whether or not the address exists - see sendRecoveryEmail.
+      setInfo("If that address has an account, a reset link is on its way. Check your inbox (and spam).");
+    } catch(e){ setErr(e.message || "Couldn't send the reset email."); }
+    finally { setBusy(false); }
+  }
 
   async function submit(){
     setErr(""); setInfo(""); setBusy(true);
@@ -715,9 +781,13 @@ function AuthScreen({ onSignedIn, onExplore }){
         {busy ? "…" : (mode==="signup" ? "Create account" : "Sign in")}
       </button>
       <div style={{textAlign:"center", marginTop:14}}>
-        <button className="btn ghost" onClick={()=>{ setMode(mode==="signup"?"signin":"signup"); setErr(""); }}>
+        <button className="btn ghost" onClick={()=>{ setMode(mode==="signup"?"signin":"signup"); setErr(""); setInfo(""); }}>
           {mode==="signup" ? "Have an account? Sign in" : "New here? Create an account"}
         </button>
+        {mode==="signin" && (
+          <div><button className="btn ghost" disabled={busy} onClick={forgot}
+            style={{fontSize:13, opacity:.85}}>Forgot password?</button></div>
+        )}
       </div>
       {!SUPABASE_URL && (
         <div style={{textAlign:"center", marginTop:18, borderTop:"1px solid var(--line)", paddingTop:16}}>
@@ -726,6 +796,56 @@ function AuthScreen({ onSignedIn, onExplore }){
         </div>
       )}
       <p className="muted" style={{textAlign:"center", marginTop:16, opacity:.6}}>v{APP_VERSION}</p>
+    </div>
+  );
+}
+
+/* Landing screen for a password-reset link. `recovery` is what readRecoveryFromHash
+   returned: { token } for a live link, or { error } for an expired/already-used one. */
+function ResetPassword({ recovery, onDone }){
+  const [pw,setPw] = useState("");
+  const [pw2,setPw2] = useState("");
+  const [busy,setBusy] = useState(false);
+  const [err,setErr] = useState(recovery.error || "");
+  const dead = !recovery.token;
+
+  async function save(){
+    if (pw.length < 8){ setErr("Use at least 8 characters."); return; }
+    if (pw !== pw2){ setErr("Those two passwords don't match."); return; }
+    setErr(""); setBusy(true);
+    try {
+      await updatePassword(recovery.token, pw);
+      onDone("Password updated - sign in with your new password.");
+    } catch(e){ setErr(e.message || "Couldn't set the password."); setBusy(false); }
+  }
+
+  return (
+    <div className="auth-wrap">
+      <div className="brand">
+        <div className="mark">{BRAND.name}</div>
+        <div className="tag">{dead ? "Reset link problem" : "Choose a new password"}</div>
+      </div>
+      {dead ? (
+        <div>
+          <div className="err" style={{marginBottom:12}}>{err || "That reset link is no longer valid."}</div>
+          <div className="notice">Reset links expire and can only be used once. Request a fresh one from the sign-in screen.</div>
+          <button className="btn primary" style={{marginTop:10}} onClick={()=> onDone("")}>Back to sign in</button>
+        </div>
+      ) : (
+        <div>
+          <div className="field"><label>New password</label>
+            <PwInput value={pw} onChange={setPw} placeholder="At least 8 characters" autoComplete="new-password" /></div>
+          <div className="field"><label>Confirm new password</label>
+            <PwInput value={pw2} onChange={setPw2} placeholder="Type it again" autoComplete="new-password" onEnter={save} /></div>
+          {err && <div className="err">{err}</div>}
+          <button className="btn primary" disabled={busy} onClick={save} style={{marginTop:6}}>
+            {busy ? "Saving…" : "Set new password"}
+          </button>
+          <div style={{textAlign:"center", marginTop:12}}>
+            <button className="btn ghost" onClick={()=> onDone("")}>Cancel</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1837,6 +1957,10 @@ function App(){
   const loadedOnce = useRef(false);
 
   const [overlay,setOverlay] = useState(null);
+  // Read once, on the first render: readRecoveryFromHash CLEARS the URL hash, so
+  // calling it during render (not in an effect) keeps the token off screen.
+  const [recovery,setRecovery] = useState(()=> readRecoveryFromHash());
+  const [authNotice,setAuthNotice] = useState("");
 
   function flash(msg){ setToast(msg); setTimeout(()=> setToast(""), 2600); }
   function applyCfg(next){ setCfg(next); saveConfig(next); }
@@ -2147,8 +2271,15 @@ function App(){
     })();
   },[authed]);  // eslint-disable-line
 
+  // A password-reset link wins over everything, including an existing session: the
+  // person clicking it may be signed in on this device but resetting for another.
+  if (recovery){
+    return <ResetPassword recovery={recovery}
+      onDone={(msg)=>{ setRecovery(null); setAuthNotice(msg || ""); }} />;
+  }
+
   if (!authed){
-    return <AuthScreen
+    return <AuthScreen notice={authNotice}
       onSignedIn={(c)=>{ setCfg(c); setAuthed(true); }}
       onExplore={()=>{ const c={ ...loadConfig(), offline:true, userId:"local" }; saveConfig(c); setCfg(c); setAuthed(true); }} />;
   }
