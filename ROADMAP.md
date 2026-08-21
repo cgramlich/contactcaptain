@@ -45,8 +45,15 @@ and the live `/api/health` — not written down here, so this file can't go stal
 - Pipeline grouped by stage (Lead / Contacted / Proposal / Won / Lost), open + won totals,
   deal detail with one-tap stage changes and contact/company linking.
 
-### Import
-- **vCard (.vcf)** import, parsed on-device. Cleans as it goes and dedupes twice: duplicates
+### Import & data hygiene
+- **vCard (.vcf)** import, parsed on-device. Preserves the export's **phone/email type labels**
+  (so "which one is his mobile" is answered from the source data), normalizes phones to
+  **E.164**, and records **source + scope** (personal/work) per contact.
+- **Review queue**: imports write immediately and flag each contact for review; the queue works
+  through them one at a time, **resumable across days and devices** (state lives on the record,
+  not in the tab). Confirm / edit / archive, with flags for the suspicious ones.
+- **Personal / Work / All** filter on the People screen. Archive hides without deleting.
+- Original behaviour still applies: Cleans as it goes and dedupes twice: duplicates
   within the file, and against contacts you already have (matched on email/phone,
   case-insensitive). Review screen shows **New vs Merge** before anything is written.
 
@@ -68,8 +75,8 @@ and the live `/api/health` — not written down here, so this file can't go stal
 ## 🗺️ Roadmap
 
 ### Now
-1. **Import real contacts** — Gmail (x2 accounts) + iCloud exports. The engine only comes alive
-   with real people in it.
+1. **Import real contacts** — Gmail (x2 accounts) + iCloud exports, then work the review queue
+   at your own pace. The engine only comes alive with real people in it.
 2. **Re-enable "Confirm email"** in Supabase now that Resend delivers reliably.
 3. Optional: URL-forward the old getinnerorbit.io → contactcaptain.com to rescue card links
    shared before 2026-08-19.

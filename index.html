@@ -207,6 +207,7 @@
       border:1px solid var(--line); }
     .duecard.alert{ background:rgba(229,100,90,.12); border-color:var(--danger); color:var(--danger); }
     .duecard.ok{ background:var(--surface-2); color:var(--text-dim); }
+    .pill.warn{ background:rgba(231,178,76,.14); border-color:var(--amber); color:var(--amber); }
     .cm-type{ font-size:11px; color:var(--text-faint); margin-left:8px;
       text-transform:uppercase; letter-spacing:.04em; }
 
@@ -267,11 +268,11 @@ const { useState, useEffect, useRef, useCallback } = React;
 // User-facing semantic version (MAJOR.MINOR.PATCH). This is what shows in Settings,
 // the update prompts, and the footers - a real version, not a build date. Bump it on
 // every deploy: PATCH for a fix, MINOR for a feature, MAJOR for a big milestone.
-const APP_VERSION = "0.7.0";
+const APP_VERSION = "0.8.0";
 // Internal build stamp. Bump on every deploy too (today's date + a counter). This is
 // what the updater actually COMPARES (it's monotonic, so detection never misfires) and
 // what cache-busts the reload; APP_VERSION above is the friendly label shown to users.
-const BUILD = "2026-08-20.1";
+const BUILD = "2026-08-20.2";
 const BRAND = { name: "ContactCaptain", tagline: "Stay close to the people in your orbit." };
 
 // Hosted backend base (Railway). Overridable per-user in Settings.
@@ -973,11 +974,16 @@ function HomeView({ data, onOpenContact, onQuickLog, onToggleTask, onDeleteTask,
   );
 }
 
-function PeopleView({ data, onOpenContact, onOpenOrg, onImport, onDeleteContact, onDeleteOrg }){
+function PeopleView({ data, onOpenContact, onOpenOrg, onImport, onDeleteContact, onDeleteOrg, onReview, reviewCount }){
   const [seg,setSeg] = useState("people");
   const [q,setQ] = useState("");
   const [tag,setTag] = useState("");
-  const contacts = data.contacts || [];
+  const [scopeView,setScopeView] = useState("all");   // all | personal | work
+  // Archived contacts are hidden everywhere except an explicit search for them;
+  // they are not deleted, just out of the way.
+  const allContacts = (data.contacts || []).filter(c=> !c.archived);
+  const contacts = scopeView==="all" ? allContacts
+    : allContacts.filter(c=> (c.scope || "personal") === scopeView);
   const orgs = data.organizations || [];
   const orgName = (id)=> (orgs.find(o=>o.id===id)||{}).name || "";
   const allTags = [...new Set(contacts.flatMap(c=> c.tags||[]))].sort();
@@ -1005,6 +1011,19 @@ function PeopleView({ data, onOpenContact, onOpenOrg, onImport, onDeleteContact,
       </div>
       <input className="input search" value={q} onChange={e=>setQ(e.target.value)}
         placeholder={seg==="people"?"Search people…":"Search companies…"} />
+
+      {seg==="people" && allContacts.some(c=> (c.scope||"personal")!=="personal") && (
+        <div className="chips filterchips">
+          {[["all","All"],["personal","Personal"],["work","Work"]].map(([v,l])=> (
+            <span key={v} className={"pill"+(scopeView===v?" on":"")} onClick={()=>setScopeView(v)}>{l}</span>))}
+        </div>
+      )}
+
+      {seg==="people" && reviewCount>0 && (
+        <button className="btn" style={{marginBottom:10}} onClick={onReview}>
+          Review {reviewCount} imported contact{reviewCount===1?"":"s"} →
+        </button>
+      )}
 
       {seg==="people" && allTags.length>0 && (
         <div className="chips filterchips">
@@ -1177,7 +1196,7 @@ function DealDetail({ deal, contact, org, onEdit, onDelete, onClose, onStage, on
   );
 }
 
-function SettingsView({ cfg, onCfg, onLogout, onCheckUpdate, updMsg, update, onApplyUpdate, onImport, onCard,
+function SettingsView({ cfg, onCfg, onLogout, onCheckUpdate, updMsg, update, onApplyUpdate, onImport, onCard, onReview, reviewCount,
                         syncUnsent, syncPushing, onRetrySync }){
   const theme = cfg.theme || "dark";
   function setTheme(t){
@@ -1222,6 +1241,16 @@ function SettingsView({ cfg, onCfg, onLogout, onCheckUpdate, updMsg, update, onA
             <div><div style={{fontWeight:600}}>My digital card</div>
               <div className="muted">A shareable card + QR; capture new contacts</div></div>
             <button className="btn" style={{width:"auto"}} onClick={onCard}>Open</button>
+          </div>
+        </div>
+      )}
+
+      {reviewCount>0 && (
+        <div className="card">
+          <div className="row" style={{justifyContent:"space-between"}}>
+            <div><div style={{fontWeight:600}}>Review imported contacts</div>
+              <div className="muted">{reviewCount} waiting — do a few at a time</div></div>
+            <button className="btn primary" style={{width:"auto"}} onClick={onReview}>Review</button>
           </div>
         </div>
       )}
@@ -2034,6 +2063,76 @@ function CardEditor({ cfg, onAddLead, onClose }){
   );
 }
 
+/* REVIEW QUEUE
+   Importing thousands of contacts at once is fast; CHECKING them is not. So the
+   import writes everything immediately and flags each touched contact
+   `needs_review`, and this screen works through that backlog one card at a time.
+   State lives on the contact record in the cloud, not in this component, which is
+   what makes it resumable: close the tab, come back days later on another device,
+   and the queue simply picks up where it left off. */
+function ReviewQueue({ data, onKeep, onArchive, onEdit, onClose }){
+  const pending = (data.contacts||[]).filter(c=> c.needs_review && !c.archived);
+  const [i,setI] = useState(0);
+  const c = pending[Math.min(i, Math.max(0, pending.length-1))];
+  const orgs = data.organizations||[];
+
+  if (!pending.length) return (
+    <div className="overlay">
+      <div className="overlay-head"><button className="icon-btn" onClick={onClose}>←</button>
+        <b>Review</b><span style={{width:34}} /></div>
+      <div className="overlay-body">
+        <Placeholder glyph={"✅"} title="Nothing to review"
+          note="Imported contacts land here so you can confirm them at your own pace." />
+      </div>
+    </div>
+  );
+
+  const org = orgs.find(o=> o.id===c.org_id);
+  // What makes this contact suspicious - shown so a decision takes a second, not a minute.
+  const flags = [];
+  if (!(c.emails||[]).length && !(c.phones||[]).length) flags.push("No email or phone");
+  if (!c.name || c.name==="(no name)") flags.push("No name");
+  if ((c.phones||[]).length && !(c.phones||[]).some(p=> cmType(p))) flags.push("No number is labelled");
+  if ((c.sources||[]).length > 1) flags.push("Merged from " + c.sources.length + " sources");
+
+  return (
+    <div className="overlay">
+      <div className="overlay-head">
+        <button className="icon-btn" onClick={onClose}>←</button>
+        <b>Review — {pending.length} left</b>
+        <span style={{width:34}} />
+      </div>
+      <div className="overlay-body">
+        <div className="card">
+          <div className="detail-name">
+            <div className="avatar lg">{initials(c.name)}</div>
+            <div><h2>{c.name}</h2>
+              {(c.title||org) && <div className="muted">{[c.title, org&&org.name].filter(Boolean).join(" · ")}</div>}
+            </div>
+          </div>
+          {flags.length>0 && <div className="chips">{flags.map(f=> <span key={f} className="pill warn">{f}</span>)}</div>}
+          <DField label="Emails" items={c.emails} link="mailto" />
+          <DField label="Phones" items={c.phones} link="tel" />
+          {c.location && <DRow label="Location" val={c.location} />}
+          {c.notes && <DRow label="Notes" val={c.notes} />}
+          {(c.sources||[]).length>0 && <DRow label="Source" val={(c.sources||[]).join(", ") + (c.scope? " · "+c.scope : "")} />}
+        </div>
+        <div className="row">
+          <button className="btn primary" onClick={()=> onKeep(c.id)}>Looks right</button>
+          <button className="btn" onClick={()=> onEdit(c)}>Edit</button>
+        </div>
+        <button className="btn danger" style={{marginTop:8}} onClick={()=> onArchive(c.id)}>Archive</button>
+        <div style={{textAlign:"center", marginTop:10}}>
+          <button className="btn ghost" onClick={()=> setI(i+1)}>Skip for now</button>
+        </div>
+        <p className="muted" style={{textAlign:"center", marginTop:14}}>
+          Stop any time — your place is saved to your account.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function App(){
   const [cfg,setCfg] = useState(()=> loadConfig());
   const [authed,setAuthed] = useState(()=>{ const c=loadConfig(); return configComplete(c) || !!c.offline; });
@@ -2145,6 +2244,18 @@ function App(){
     saveCollection("organizations", i>=0 ? arr.map(x=> x.id===o.id?o:x) : [o, ...arr]);
   }
   function deleteOrg(id){ saveCollection("organizations", (data.organizations||[]).filter(x=>x.id!==id)); }
+
+  // Review queue actions. Archiving is deliberately NOT deletion: a contact you
+  // archive keeps its history and can come back, which matters when the reason it
+  // looked like junk was a bad import rather than a bad contact.
+  function reviewKeep(id){
+    saveCollection("contacts", (data.contacts||[]).map(c=> c.id===id
+      ? {...c, needs_review:false, verified_at:todayISO(), updated_at:todayISO()} : c));
+  }
+  function reviewArchive(id){
+    saveCollection("contacts", (data.contacts||[]).map(c=> c.id===id
+      ? {...c, needs_review:false, archived:true, updated_at:todayISO()} : c));
+  }
 
   // Accept a digital-card "connection" (lead) into contacts, tagged by source.
   function addLeadContact(d){
@@ -2381,6 +2492,7 @@ function App(){
       onExplore={()=>{ const c={ ...loadConfig(), offline:true, userId:"local" }; saveConfig(c); setCfg(c); setAuthed(true); }} />;
   }
 
+  const reviewCount = (data.contacts||[]).filter(c=> c.needs_review && !c.archived).length;
   const showDeals = !!cfg.dealsEnabled;
   let screen;
   if (tab==="home") screen = <HomeView data={data}
@@ -2392,14 +2504,16 @@ function App(){
                     onOpenContact={(id)=> setOverlay({type:"contactDetail", id})}
                     onOpenOrg={(id)=> setOverlay({type:"orgDetail", id})}
                     onImport={()=> setOverlay({type:"import"})}
-                    onDeleteContact={deleteContact} onDeleteOrg={deleteOrg} />;
+                    onDeleteContact={deleteContact} onDeleteOrg={deleteOrg}
+                    onReview={()=> setOverlay({type:"review"})} reviewCount={reviewCount} />;
   else if (tab==="deals") screen = <DealsView data={data} onOpenDeal={(id)=> setOverlay({type:"dealDetail", id})}
                     onDeleteDeal={deleteDeal} />;
   else screen = <SettingsView cfg={cfg} onCfg={applyCfg} onLogout={signOutHard}
                     onCheckUpdate={checkUpdate} updMsg={updMsg} update={update} onApplyUpdate={doApplyUpdate}
                     syncUnsent={unsent} syncPushing={pushing} onRetrySync={flushUnsent}
                     onImport={()=> setOverlay({type:"import"})}
-                    onCard={()=> setOverlay({type:"card"})} />;
+                    onCard={()=> setOverlay({type:"card"})}
+                    onReview={()=> setOverlay({type:"review"})} reviewCount={reviewCount} />;
 
   // A push that has come back and left work behind = a real problem, so say so. While a
   // push is still in flight we stay quiet (every save would otherwise flash a banner).
@@ -2465,8 +2579,13 @@ function App(){
       {overlay && overlay.type==="ai" &&
         <AIPanel title={overlay.title} run={overlay.run} onClose={()=> setOverlay(null)} />}
 
+      {overlay && overlay.type==="review" &&
+        <ReviewQueue data={data} onKeep={reviewKeep} onArchive={reviewArchive}
+          onEdit={(c)=> setOverlay({type:"contactForm", contact:c})}
+          onClose={()=> setOverlay(null)} />}
+
       {overlay && overlay.type==="import" &&
-        <ImportFlow existingContacts={data.contacts||[]} onApply={applyImport} onClose={()=> setOverlay(null)} />}
+        <ImportFlow existingContacts={data.contacts||[]} onApply={(rows,meta)=> applyImport(rows,meta)} onClose={()=> setOverlay(null)} />}
 
       {overlay && overlay.type==="card" &&
         <CardEditor cfg={cfg} onAddLead={addLeadContact} onClose={()=> setOverlay(null)} />}

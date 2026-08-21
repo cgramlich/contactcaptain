@@ -154,6 +154,20 @@ few messages per hour and, when hit, **Supabase rejects the signup outright** �
   year). Deleting a contact lives on the contact detail screen only. Follow-up and
   interaction rows keep a real destructive Delete.
 
+## Contacts data model (2026-08-20)
+- **Contact methods** (`emails`, `phones`) are EITHER a plain string (all data created before
+  2026-08-20) OR `{v,t}` — value plus a type label (`mobile`/`work`/`home`). Read them ONLY via
+  `cmValue` / `cmType`; write via `cmMake`. Assuming strings will silently render `[object Object]`.
+- **Phones are E.164** (`+15551112222`) on import and on manual entry — that is what makes
+  "(555) 111-2222" and "555.111.2222" dedupe as one person. Display via `fmtPhone`; `tel:` links
+  use the raw E.164. `DEFAULT_DIAL_CC` assumes US/Canada for bare 10-digit numbers.
+- **Type labels come from the vCard export** (`TEL;TYPE=CELL`). A US mobile CANNOT be identified
+  from the digits after the fact, so never drop the label on import "for simplicity".
+- **Per-contact provenance:** `sources[]` (import labels), `scope` (`personal`/`work`, drives the
+  People filter), `needs_review` (the review queue), `verified_at`, `archived`.
+- **Archive is not delete.** Archived contacts are hidden from views but keep their history.
+  Review actions set flags; they never remove records.
+
 ## Security / RLS
 - Tables have **RLS on, no policies** → clients (publishable key) can't touch them directly.
   Only the backend (secret key) reads/writes. All access flows through the API.
