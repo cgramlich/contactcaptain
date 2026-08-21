@@ -207,6 +207,8 @@
       border:1px solid var(--line); }
     .duecard.alert{ background:rgba(229,100,90,.12); border-color:var(--danger); color:var(--danger); }
     .duecard.ok{ background:var(--surface-2); color:var(--text-dim); }
+    .cm-type{ font-size:11px; color:var(--text-faint); margin-left:8px;
+      text-transform:uppercase; letter-spacing:.04em; }
 
     /* ---- swipe action on list rows (portfolio standard, ref impl tracker-app) ----
        Default action is a destructive Delete (red). Rows that are only a REMINDER VIEW
@@ -265,11 +267,11 @@ const { useState, useEffect, useRef, useCallback } = React;
 // User-facing semantic version (MAJOR.MINOR.PATCH). This is what shows in Settings,
 // the update prompts, and the footers - a real version, not a build date. Bump it on
 // every deploy: PATCH for a fix, MINOR for a feature, MAJOR for a big milestone.
-const APP_VERSION = "0.6.0";
+const APP_VERSION = "0.7.0";
 // Internal build stamp. Bump on every deploy too (today's date + a counter). This is
 // what the updater actually COMPARES (it's monotonic, so detection never misfires) and
 // what cache-busts the reload; APP_VERSION above is the friendly label shown to users.
-const BUILD = "2026-08-19.3";
+const BUILD = "2026-08-20.1";
 const BRAND = { name: "ContactCaptain", tagline: "Stay close to the people in your orbit." };
 
 // Hosted backend base (Railway). Overridable per-user in Settings.
@@ -988,7 +990,7 @@ function PeopleView({ data, onOpenContact, onOpenOrg, onImport, onDeleteContact,
       || orgName(c.org_id).toLowerCase().includes(ql)
       || (c.title||"").toLowerCase().includes(ql)
       || (c.tags||[]).some(t=> t.toLowerCase().includes(ql))
-      || (c.emails||[]).some(e=> e.toLowerCase().includes(ql));
+      || (c.emails||[]).some(e=> cmValue(e).toLowerCase().includes(ql));
   }).sort((a,b)=> (a.name||"").localeCompare(b.name||""));
 
   const companies = orgs
@@ -1022,7 +1024,7 @@ function PeopleView({ data, onOpenContact, onOpenOrg, onImport, onDeleteContact,
               : <Placeholder glyph={"\u{1F465}"} title="No matches" note="Try a different search or tag." />)
           : people.map(c=>{
               const org = orgs.find(o=> o.id===c.org_id);
-              const sub = [c.title, org && org.name].filter(Boolean).join(" · ") || (c.emails&&c.emails[0]) || "";
+              const sub = [c.title, org && org.name].filter(Boolean).join(" · ") || cmValue(c.emails&&c.emails[0]) || "";
               return (
                 <SwipeRow key={c.id} bare onDelete={()=>{ if(confirm("Delete this contact?")) onDeleteContact(c.id); }}>
                   <div className="list-row" onClick={()=> onOpenContact(c.id)}>
@@ -1268,12 +1270,20 @@ function initials(n){
 function DRow({ label, val }){
   return <div className="drow"><div className="dlabel">{label}</div><div>{val}</div></div>;
 }
+/* Renders emails/phones. Items may be plain strings or {v,t} - see cmValue. The
+   type label ("mobile") is shown because knowing WHICH number is the mobile is
+   the whole reason the importer preserves it. */
 function DField({ label, items, link }){
   if (!items || !items.length) return null;
   const href = (v)=> link==="http" ? (/^https?:/.test(v) ? v : "https://"+v) : (link+":"+v);
+  const shown = (x)=> link==="tel" ? fmtPhone(x) : cmValue(x);
   return (
     <div className="drow"><div className="dlabel">{label}</div>
-      <div>{items.map((v,i)=> <div key={i}><a href={href(v)} target={link==="http"?"_blank":undefined} rel="noreferrer">{v}</a></div>)}</div>
+      <div>{items.map((x,i)=> (
+        <div key={i}>
+          <a href={href(cmValue(x))} target={link==="http"?"_blank":undefined} rel="noreferrer">{shown(x)}</a>
+          {cmType(x) && <span className="cm-type">{cmType(x)}</span>}
+        </div>))}</div>
     </div>
   );
 }
@@ -1281,12 +1291,23 @@ function DField({ label, items, link }){
 /* Repeatable chip-style input (tags, emails, phones). */
 function MultiInput({ values, onChange, placeholder, type }){
   const [draft,setDraft] = useState("");
-  function add(){ const v=draft.trim(); if(!v) return; if(!values.includes(v)) onChange([...values, v]); setDraft(""); }
+  // Phones typed by hand get the same E.164 treatment as imported ones, so a
+  // manually added number still dedupes against its imported twin.
+  function add(){
+    const raw = draft.trim(); if(!raw) return;
+    const v = type==="tel" ? toE164(raw) : (type==="email" ? raw.toLowerCase() : raw);
+    if (!values.some(x=> cmValue(x)===v)) onChange([...values, v]);
+    setDraft("");
+  }
   return (
     <div>
       {values.length>0 && (
         <div className="chips">
-          {values.map(v=> <span key={v} className="pill removable" onClick={()=> onChange(values.filter(x=>x!==v))}>{v} ✕</span>)}
+          {values.map((x,i)=> (
+            <span key={i} className="pill removable"
+              onClick={()=> onChange(values.filter((_,j)=> j!==i))}>
+              {type==="tel" ? fmtPhone(x) : cmValue(x)}{cmType(x) ? " · "+cmType(x) : ""} ✕
+            </span>))}
         </div>
       )}
       <div className="row">
@@ -1566,8 +1587,41 @@ function AddSheet({ onClose, onContact, onCompany, onDeal, dealsEnabled }){
 /* ============================================================
    CONTACT IMPORT (vCard) + dedupe — Phase 6
    ============================================================ */
-function emailKey(e){ return (e||"").trim().toLowerCase(); }
-function phoneKey(p){ const d=(p||"").replace(/\D/g,""); return d.length>10 ? d.slice(-10) : d; }
+/* CONTACT METHODS (phones / emails)
+   Stored EITHER as a plain string (everything created before 2026-08-20) OR as
+   {v,t} - the value plus a type label ("mobile"/"work"/"home") carried over from a
+   vCard export. Every read goes through these helpers so both shapes work and no
+   screen has to know which one it got. Do not "simplify" by assuming strings. */
+function cmValue(x){ return typeof x === "string" ? x : ((x && x.v) || ""); }
+function cmType(x){ return (x && typeof x === "object" && x.t) ? x.t : ""; }
+function cmMake(v, t){ return t ? { v:v, t:t } : v; }
+
+/* Phone numbers are normalized to E.164 (+15551112222) on import. Without this,
+   "(555) 111-2222" and "555.111.2222" are different strings and the same person
+   imports twice. DEFAULT_DIAL_CC is the assumption for bare 10-digit numbers -
+   correct for US/Canada exports, which is what this app imports today. A number
+   that already carries a + is trusted as-is; anything unrecognized is left alone
+   rather than mangled, because a wrong number is worse than an unformatted one. */
+const DEFAULT_DIAL_CC = "1";
+function toE164(raw){
+  const s = String(raw||"").trim();
+  if (!s) return "";
+  if (s[0] === "+") return "+" + s.slice(1).replace(/\D/g,"");
+  const d = s.replace(/\D/g,"");
+  if (d.length === 10) return "+" + DEFAULT_DIAL_CC + d;
+  if (d.length === 11 && d[0] === "1") return "+" + d;
+  return s;                       // extensions, short codes, foreign formats
+}
+/* Display: +15551112222 -> (555) 111-2222 for the default country; others as-is. */
+function fmtPhone(x){
+  const v = cmValue(x);
+  const m = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(v);
+  return m ? "(" + m[1] + ") " + m[2] + "-" + m[3] : v;
+}
+
+// Match keys for dedupe. Both accept a string OR a {v,t}.
+function emailKey(e){ return cmValue(e).trim().toLowerCase(); }
+function phoneKey(p){ const d=cmValue(p).replace(/\D/g,""); return d.length>10 ? d.slice(-10) : d; }
 function uniqBy(arr, keyFn){
   const seen=new Set(), out=[];
   for(const v of arr){ const k=keyFn(v); if(!k){ continue; } if(!seen.has(k)){ seen.add(k); out.push(v); } }
@@ -1587,6 +1641,26 @@ function qpDecode(s){
   }
   try { return new TextDecoder("utf-8").decode(new Uint8Array(bytes)); } catch(e){ return s; }
 }
+/* Pull the human-meaningful type off a vCard property's parameters:
+   TEL;TYPE=CELL / TEL;type=cell,voice / item1.TEL;type=IPHONE -> "mobile".
+   This is THE answer to "which number is actually his mobile" - the export
+   already knows, and dropping it (as this importer originally did) throws away
+   information that cannot be recovered from a US number afterwards. */
+const VC_TYPE_MAP = { cell:"mobile", iphone:"mobile", mobile:"mobile",
+  work:"work", home:"home", main:"main", fax:"fax", workfax:"fax", homefax:"fax",
+  other:"", voice:"", pref:"", internet:"" };
+function vcType(params){
+  for (const raw of (params||[]).slice(1)){
+    const m = /^type=(.*)$/i.exec(raw.trim());
+    if (!m) continue;
+    for (const piece of m[1].split(",")){
+      const hit = VC_TYPE_MAP[piece.trim().toLowerCase().replace(/[^a-z]/g,"")];
+      if (hit) return hit;
+    }
+  }
+  return "";
+}
+
 function parseVCards(text){
   const cards=[];
   const blocks=text.split(/BEGIN:VCARD/i).slice(1);
@@ -1604,8 +1678,8 @@ function parseVCards(text){
       const unesc=(x)=> (x||"").replace(/\\n/gi," ").replace(/\\,/g,",").replace(/\\;/g,";").replace(/\\\\/g,"\\").trim();
       if(prop==="FN") c.name=unesc(value);
       else if(prop==="N"){ const f=value.split(";").map(unesc); nFallback=[f[3],f[1],f[2],f[0],f[4]].filter(Boolean).join(" ").trim(); }
-      else if(prop==="EMAIL"){ const e=unesc(value); if(e) c.emails.push(e); }
-      else if(prop==="TEL"){ const t=unesc(value); if(t) c.phones.push(t); }
+      else if(prop==="EMAIL"){ const e=unesc(value); if(e) c.emails.push(cmMake(e.toLowerCase(), vcType(params))); }
+      else if(prop==="TEL"){ const v=unesc(value); if(v) c.phones.push(cmMake(toE164(v), vcType(params))); }
       else if(prop==="ORG"&&!c.orgName){ c.orgName=unesc(value.split(";")[0]); }
       else if(prop==="TITLE"&&!c.title){ c.title=unesc(value); }
       else if(prop==="ADR"&&!c.location){ const a=value.split(";").map(unesc); c.location=[a[3],a[4]].filter(Boolean).join(", "); }
@@ -1614,7 +1688,7 @@ function parseVCards(text){
     }
     if(!c.name) c.name=nFallback;
     c.emails=uniqBy(c.emails, emailKey);
-    c.phones=uniqBy(c.phones.map(p=>p.trim()), phoneKey);
+    c.phones=uniqBy(c.phones, phoneKey);
     if(c.name || c.emails.length || c.phones.length) cards.push(c);
   }
   return cards;
@@ -1649,8 +1723,11 @@ function ImportFlow({ existingContacts, onApply, onClose }){
   const [stage,setStage]=useState("pick");
   const [rows,setRows]=useState([]);
   const [err,setErr]=useState("");
+  const [scope,setScope]=useState("personal");   // which view these belong to
+  const [source,setSource]=useState("");         // free label, prefilled from the filename
   function onFile(e){
     const f=e.target.files && e.target.files[0]; if(!f) return;
+    if(!source) setSource(f.name.replace(/\.(vcf|vcard)$/i,"").slice(0,40));
     const reader=new FileReader();
     reader.onload=()=>{
       try{
@@ -1689,9 +1766,22 @@ function ImportFlow({ existingContacts, onApply, onClose }){
       <div className="overlay-head">
         <button className="icon-btn" onClick={()=>setStage("pick")}>←</button>
         <b>Review import</b>
-        <button className="btn ghost" disabled={newCount+mergeCount===0} onClick={()=> onApply(rows)}>Import</button>
+        <button className="btn ghost" disabled={newCount+mergeCount===0}
+          onClick={()=> onApply(rows, { source: source||"import", scope })}>Import</button>
       </div>
       <div className="overlay-body">
+        <div className="card">
+          <div className="dlabel">These contacts are</div>
+          <div className="seg" style={{marginTop:6}}>
+            <button className={scope==="personal"?"on":""} onClick={()=>setScope("personal")}>Personal</button>
+            <button className={scope==="work"?"on":""} onClick={()=>setScope("work")}>Work</button>
+          </div>
+          <div className="field" style={{marginTop:8, marginBottom:0}}>
+            <label>Source label</label>
+            <input className="input" value={source} onChange={e=>setSource(e.target.value)}
+              placeholder="e.g. gmail-personal" />
+          </div>
+        </div>
         <div className="card"><b>{newCount}</b> new · <b>{mergeCount}</b> to merge into existing
           {rows.length-(newCount+mergeCount)>0 && <span className="muted"> · {rows.length-(newCount+mergeCount)} skipped</span>}</div>
         {rows.slice(0,300).map((r,i)=> (
@@ -1699,7 +1789,7 @@ function ImportFlow({ existingContacts, onApply, onClose }){
             <input type="checkbox" checked={r.include} onChange={()=>toggle(i)} />
             <div className="lr-main" style={{opacity:r.include?1:0.5}}>
               <div className="lr-name">{r.draft.name||"(no name)"}</div>
-              <div className="muted">{[(r.draft.emails[0]||r.draft.phones[0]||""), r.target?("merge → "+targetName(r.target)):null].filter(Boolean).join(" · ")}</div>
+              <div className="muted">{[(cmValue(r.draft.emails[0])||fmtPhone(r.draft.phones[0])||""), r.target?("merge → "+targetName(r.target)):null].filter(Boolean).join(" · ")}</div>
             </div>
             <span className={"pill"+(r.target?"":" on")}>{r.target?"Merge":"New"}</span>
           </div>
@@ -2172,7 +2262,10 @@ function App(){
   }
 
   // Apply a reviewed contact import (Phase 6). Batches orgs + contacts into one save each.
-  function applyImport(rows){
+  function applyImport(rows, meta){
+    // meta = { source, scope } chosen on the import screen. Recorded per contact so
+    // Personal/Work views can filter, and so a bad import can be identified later.
+    const src=(meta&&meta.source)||"import", scope=(meta&&meta.scope)||"personal";
     let contacts=[...(data.contacts||[])];
     let orgs=[...(data.organizations||[])];
     const orgByName=new Map(orgs.map(o=>[(o.name||"").toLowerCase(), o]));
@@ -2194,12 +2287,16 @@ function App(){
           phones:uniqBy([...(ex.phones||[]), ...r.draft.phones], phoneKey),
           org_id: ex.org_id||org_id, title: ex.title||r.draft.title, location: ex.location||r.draft.location,
           birthday: ex.birthday||r.draft.birthday, notes: ex.notes||r.draft.notes, name: ex.name||r.draft.name,
+          sources: [...new Set([...(ex.sources||[]), src])],
+          scope: ex.scope || scope,
+          needs_review: true,            // a merge changed this record - eyeball it later
           updated_at: todayISO() };
         contacts=contacts.map(c=> c.id===ex.id?upd:c); byId.set(ex.id, upd); mergedN++;
       } else {
         const c={ id:uid("c"), name:r.draft.name||"(no name)", emails:r.draft.emails, phones:r.draft.phones,
           org_id, title:r.draft.title||"", location:r.draft.location||"", tags:[], how_we_met:"",
           birthday:r.draft.birthday||"", notes:r.draft.notes||"", cadence_days:null, last_interaction_at:null,
+          sources:[src], scope, needs_review:true,
           created_at:todayISO(), updated_at:todayISO() };
         contacts=[c, ...contacts]; byId.set(c.id, c); added++;
       }
@@ -2207,7 +2304,7 @@ function App(){
     saveCollection("contacts", contacts);
     saveCollection("organizations", orgs);
     setOverlay(null);
-    flash("Imported "+added+" new"+(mergedN?(" · merged "+mergedN):""));
+    flash("Imported "+added+" new"+(mergedN?(" · merged "+mergedN):"")+" — review them any time");
   }
 
   // Service worker registration + version check.
