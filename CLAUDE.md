@@ -65,11 +65,11 @@ backend, deployed to the web; Capacitor native build is future.
 
 ## Live URLs
 - **App (frontend):** https://contactcaptain.com — GitHub Pages from `cgramlich/contactcaptain`,
-  **Pages serves ONE custom domain only**: the old getinnerorbit.io now 404s (it is NOT a
-  fallback). Card links shared before 2026-08-19 are dead unless getinnerorbit.io is set to
-  URL-forward at the registrar. `cardUrl()` builds from the live origin so this can't recur.
-  repo **root**, custom domain via `CNAME` file. Porkbun DNS: 4 A records → GitHub Pages
+  repo **root**, custom domain via the `CNAME` file. Porkbun DNS: 4 A records → GitHub Pages
   (185.199.108–111.153) + `www` CNAME → `cgramlich.github.io`.
+  **Pages serves ONE custom domain only** — the old getinnerorbit.io now 404s and is NOT a
+  fallback. Card links shared before 2026-08-19 are dead unless that domain is set to
+  URL-forward at the registrar. `cardUrl()` builds from the live origin so this cannot recur.
 - **API (backend):** https://inner-orbit-production.up.railway.app — Railway, **root dir =
   `backend/`**, auto-deploys on push to `main`. Health: `GET /api/health`.
 - **Supabase project:** `efzuuqhraaxwsrkqfavn` (org Team CG, Pro). Asymmetric **ES256** JWT

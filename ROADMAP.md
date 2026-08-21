@@ -53,9 +53,8 @@ and the live `/api/health` — not written down here, so this file can't go stal
   through them one at a time, **resumable across days and devices** (state lives on the record,
   not in the tab). Confirm / edit / archive, with flags for the suspicious ones.
 - **Personal / Work / All** filter on the People screen. Archive hides without deleting.
-- Original behaviour still applies: Cleans as it goes and dedupes twice: duplicates
-  within the file, and against contacts you already have (matched on email/phone,
-  case-insensitive). Review screen shows **New vs Merge** before anything is written.
+- Dedupes twice: duplicates within the file, and against contacts you already have (matched on
+  email or phone, case- and format-insensitive). The pre-import screen shows **New vs Merge**.
 
 ### Platform
 - Installable PWA, offline support, in-app update prompt.
