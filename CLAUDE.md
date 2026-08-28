@@ -183,6 +183,14 @@ few messages per hour and, when hit, **Supabase rejects the signup outright** �
 - Frontend: `python dev_server.py` (CORS static server) → http://localhost:8300, or any static host.
 - The JSX is runtime-Babel in dev; `build.js` precompiles to `www/` for the native build.
 
-## Docs to keep current (Forever Apps §5 doc-currency)
-- This `CLAUDE.md`, `README.md` (as-built body), and a dated entry in
-  `Dropbox\My AI\CG Apps\Personal CRM\Personal CRM Log\` for every work session.
+## Docs to keep current (Forever Apps §5 doc-currency + two-document standard)
+Update in the SAME session as the change:
+- **`HANDOFF.md`** — authoritative. What is TRUE NOW plus decisions with the road not taken.
+  A session with no memory of this project must be able to work from it without undoing a
+  deliberate choice. Not a changelog.
+- **`BRIEFING.md`** — deck-ready, and **written to leave the machine**. ContactCaptain's data
+  model is entirely PII, so NO real contact, name, number or note may appear: fabricate examples
+  and say so. No secrets, keys or internal URLs.
+- `CLAUDE.md` (this file), `README.md`, `ROADMAP.md`, and a dated entry in
+  `Dropbox\My AI\CG Apps\Personal CRM\Personal CRM Log\`.
+Standard: `CG Apps\Forever Apps\DOCUMENTATION-STANDARD.md`.

@@ -55,7 +55,8 @@ card + QR, save-contact vCard, "share your info" → review inbox) · offline mo
 **Next:** contact-import rounds (Gmail → iCloud) · Google Contacts sync · email-to-timeline ·
 Apple contacts + Capacitor native build + store listings.
 
-See **`ROADMAP.md`** for the full built-features list and what's next, **`CLAUDE.md`** for
+See **`HANDOFF.md`** to pick this project up cold (state, decisions, traps),
+**`ROADMAP.md`** for the full built-features list and what's next, **`CLAUDE.md`** for
 architecture/endpoints/env vars, and **`CONTRIBUTING.md`** to start contributing.
 
 ## Run it
