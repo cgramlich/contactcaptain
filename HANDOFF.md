@@ -4,6 +4,15 @@ Zero-context resumption document. If you have no memory of this project, read on
 and you should be able to make the next change correctly **without asking anyone and without
 undoing something that was chosen on purpose.**
 
+**Naming — read this first.** The product is **ContactCaptain** (confirmed 2026-08-29).
+"Orbit" / "Inner Orbit" is the OLD name. It survives in this file only where it names a real
+path or identifier that still exists on disk or in a service: the repo folder `orbit-crm`, the
+retired appId `com.orbitcrm.app`, the dead domain getinnerorbit.io, the legacy `orbit_*` storage
+keys, and the Railway URL. **Same project, not two.** Those are deliberately NOT renamed — the
+churn across git remotes, Railway and hooks costs more than the confusion, provided the mismatch
+is documented, which is what this paragraph is. The memory file `orbit-personal-crm-scope.md` is
+stale-named for the same reason; its contents say ContactCaptain.
+
 `HANDOFF.md` is authoritative. `BRIEFING.md` derives from it. `CLAUDE.md` holds the in-repo
 architecture detail; `ROADMAP.md` lists built features and what is next; `CONTRIBUTING.md` is
 the process for a second developer.

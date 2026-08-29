@@ -1,6 +1,6 @@
-# Orbit backend
+# ContactCaptain backend
 
-FastAPI + Supabase backend for Orbit (Personal CRM). Adapted from the
+FastAPI + Supabase backend for ContactCaptain (Personal CRM). Adapted from the
 MenuCaptain reference plumbing.
 
 ## Endpoints
@@ -26,7 +26,7 @@ uvicorn main:app --reload --port 8000
 ```
 
 ## Supabase setup
-1. Create a new Supabase project for Orbit (own project, isolated data).
+1. Create a new Supabase project for ContactCaptain (own project, isolated data).
 2. Run `schema.sql` in the SQL editor (creates tables + service_role grants + RLS).
 3. Copy the project URL + service_role key into `.env`.
 4. Enable Email auth (and any providers you want) in Supabase Auth settings.
@@ -34,7 +34,7 @@ uvicorn main:app --reload --port 8000
 ## Deploy (Railway, like MenuCaptain)
 - New Railway service from this repo, root directory = `backend/`.
 - Start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-- Set the env vars from `.env.example`. Add the Orbit web domain to `ALLOWED_ORIGINS`.
+- Set the env vars from `.env.example`. Add the ContactCaptain web domain to `ALLOWED_ORIGINS`.
 
 ## Not ported yet (deliberately)
 Stripe/Pro billing (comes with the "Pro later" milestone), Google Places,

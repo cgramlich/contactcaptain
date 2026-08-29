@@ -28,7 +28,7 @@ contactcaptain (local dir: orbit-crm)
 Never hardcode brand text/colors. Route through `APP_NAME`/`BRAND` config + an
 `ASSETS` map + fixed icon filenames + the CSS `:root` palette.
 
-**Orbit palette (dark default — cosmic indigo):**
+**ContactCaptain palette (dark default — cosmic indigo):**
 ```css
 :root{
   --bg:#0e1116; --bg-2:#141925; --surface:#1a2030; --surface-2:#222a3d;

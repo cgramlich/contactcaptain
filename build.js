@@ -1,7 +1,7 @@
-// Orbit native build (Phase 1): precompile the inline JSX block to app.js and
+// ContactCaptain native build (Phase 1): precompile the inline JSX block to app.js and
 // rewrite index.html to load vendored React + app.js (no CDN, no runtime Babel
 // — required to be store-safe). Adapted from MenuCaptain's build.js; Leaflet/map
-// vendoring is dropped because Orbit V1 has no maps.
+// vendoring is dropped because ContactCaptain V1 has no maps.
 //
 // Run with node:  node build.js
 // Prereq: vendor React/ReactDOM and fonts into www/vendor/ (see README).
