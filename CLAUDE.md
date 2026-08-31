@@ -153,6 +153,11 @@ few messages per hour and, when hit, **Supabase rejects the signup outright** â€
   `birthday_ack` (the ISO date of the acknowledged occurrence, so the row returns next
   year). Deleting a contact lives on the contact detail screen only. Follow-up and
   interaction rows keep a real destructive Delete.
+- **Archiving silences the Home reminders too.** `HomeView` derives "Time to reach out" and
+  "Upcoming birthdays" from `activeContacts` (archived filtered out) â€” both are VIEWS of a
+  contact, so they follow it into the archive. Open follow-up TASKS deliberately stay: a task is
+  a thing you created in its own right, and it still resolves its name through the full
+  `contacts` list.
 - **`archived` must stay reversible.** Archiving is the review queue's non-destructive exit, so
   every archived contact has two ways back: the **Archived** view on the People screen, and an
   explicit search, which sweeps the archive and marks those rows. Restore is on the contact
