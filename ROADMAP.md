@@ -49,10 +49,14 @@ and the live `/api/health` — not written down here, so this file can't go stal
 - **vCard (.vcf)** import, parsed on-device. Preserves the export's **phone/email type labels**
   (so "which one is his mobile" is answered from the source data), normalizes phones to
   **E.164**, and records **source + scope** (personal/work) per contact.
-- **Review queue**: imports write immediately and flag each contact for review; the queue works
-  through them one at a time, **resumable across days and devices** (state lives on the record,
-  not in the tab). Confirm / edit / archive, with flags for the suspicious ones.
-- **Personal / Work / All** filter on the People screen. Archive hides without deleting.
+- **Review queue**, two modes, **resumable across days and devices** (state lives on the record,
+  not in the tab): **one at a time** for the judgement calls, and a **list** you can filter by
+  flag ("No email or phone", "No name", "No number is labelled", "Merged from N sources"),
+  select in bulk, and clear in a single action. Imports write immediately and flag each contact.
+- **Personal / Work / All** filter on the People screen.
+- **Archive is reversible**: archived contacts leave the lists and reminders but stay reachable
+  through an **Archived** view and through search, and **Restore** puts them back with their
+  history intact.
 - Dedupes twice: duplicates within the file, and against contacts you already have (matched on
   email or phone, case- and format-insensitive). The pre-import screen shows **New vs Merge**.
 

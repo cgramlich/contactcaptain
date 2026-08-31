@@ -153,6 +153,17 @@ few messages per hour and, when hit, **Supabase rejects the signup outright** �
   `birthday_ack` (the ISO date of the acknowledged occurrence, so the row returns next
   year). Deleting a contact lives on the contact detail screen only. Follow-up and
   interaction rows keep a real destructive Delete.
+- **`archived` must stay reversible.** Archiving is the review queue's non-destructive exit, so
+  every archived contact has two ways back: the **Archived** view on the People screen, and an
+  explicit search, which sweeps the archive and marks those rows. Restore is on the contact
+  detail (`restoreContact`) and deliberately does NOT re-set `needs_review` — undoing a mistake
+  must not cost a second decision. WARNING: `PeopleView` gates the view on `showingArchived`
+  (`archivedView && archivedContacts.length > 0`), not the raw flag — restoring the last
+  archived contact removes the toggle, and the raw flag would strand you on an empty screen.
+- **Review queue has two modes** (`ReviewQueue`): one-at-a-time, and a list with flag filters
+  and bulk Keep/Archive. Bulk actions (`reviewKeepMany` / `reviewArchiveMany`) map the contacts
+  array ONCE per action — calling the single-contact version in a loop would queue one cloud
+  push per contact. Both modes read their flags from `reviewFlags(c)` so they cannot disagree.
 
 ## Contacts data model (2026-08-20)
 - **Contact methods** (`emails`, `phones`) are EITHER a plain string (all data created before

@@ -268,11 +268,11 @@ const { useState, useEffect, useRef, useCallback } = React;
 // User-facing semantic version (MAJOR.MINOR.PATCH). This is what shows in Settings,
 // the update prompts, and the footers - a real version, not a build date. Bump it on
 // every deploy: PATCH for a fix, MINOR for a feature, MAJOR for a big milestone.
-const APP_VERSION = "0.8.2";
+const APP_VERSION = "0.9.0";
 // Internal build stamp. Bump on every deploy too (today's date + a counter). This is
 // what the updater actually COMPARES (it's monotonic, so detection never misfires) and
 // what cache-busts the reload; APP_VERSION above is the friendly label shown to users.
-const BUILD = "2026-08-30.1";
+const BUILD = "2026-08-31.1";
 const BRAND = { name: "ContactCaptain", tagline: "Stay close to the people in your orbit." };
 
 // Hosted backend base (Railway). Overridable per-user in Settings.
@@ -979,9 +979,19 @@ function PeopleView({ data, onOpenContact, onOpenOrg, onImport, onDeleteContact,
   const [q,setQ] = useState("");
   const [tag,setTag] = useState("");
   const [scopeView,setScopeView] = useState("all");   // all | personal | work
-  // Archived contacts are hidden everywhere except an explicit search for them;
-  // they are not deleted, just out of the way.
-  const allContacts = (data.contacts || []).filter(c=> !c.archived);
+  const [archivedView,setArchivedView] = useState(false);
+  // Archiving is not deleting (see reviewArchive), so an archived contact has to stay
+  // REACHABLE or the distinction is a lie. Two ways back: the Archived view below, and
+  // an explicit search, which reaches archived records so someone who remembers the name
+  // finds them without knowing the feature exists. They stay out of the unsearched list
+  // because "out of the way" is the whole point of archiving.
+  const liveContacts = (data.contacts || []).filter(c=> !c.archived);
+  const archivedContacts = (data.contacts || []).filter(c=> c.archived);
+  // Restoring the last archived contact takes the "Archived" toggle away with it, so a
+  // raw archivedView flag would strand you on an empty screen with no way back. The view
+  // only exists while there is something in it.
+  const showingArchived = archivedView && archivedContacts.length > 0;
+  const allContacts = showingArchived ? archivedContacts : liveContacts;
   const contacts = scopeView==="all" ? allContacts
     : allContacts.filter(c=> (c.scope || "personal") === scopeView);
   const orgs = data.organizations || [];
@@ -989,14 +999,18 @@ function PeopleView({ data, onOpenContact, onOpenOrg, onImport, onDeleteContact,
   const allTags = [...new Set(contacts.flatMap(c=> c.tags||[]))].sort();
   const ql = q.trim().toLowerCase();
 
-  const people = contacts.filter(c=>{
+  const matches = (c)=> (c.name||"").toLowerCase().includes(ql)
+    || orgName(c.org_id).toLowerCase().includes(ql)
+    || (c.title||"").toLowerCase().includes(ql)
+    || (c.tags||[]).some(t=> t.toLowerCase().includes(ql))
+    || (c.emails||[]).some(e=> cmValue(e).toLowerCase().includes(ql));
+
+  // A search in the normal view also sweeps the archive; browsing it does not.
+  const searchPool = (ql && !showingArchived) ? contacts.concat(archivedContacts) : contacts;
+  const people = searchPool.filter(c=>{
     if (tag && !(c.tags||[]).includes(tag)) return false;
     if (!ql) return true;
-    return (c.name||"").toLowerCase().includes(ql)
-      || orgName(c.org_id).toLowerCase().includes(ql)
-      || (c.title||"").toLowerCase().includes(ql)
-      || (c.tags||[]).some(t=> t.toLowerCase().includes(ql))
-      || (c.emails||[]).some(e=> cmValue(e).toLowerCase().includes(ql));
+    return matches(c);
   }).sort((a,b)=> (a.name||"").localeCompare(b.name||""));
 
   const companies = orgs
@@ -1006,7 +1020,7 @@ function PeopleView({ data, onOpenContact, onOpenOrg, onImport, onDeleteContact,
   return (
     <div>
       <div className="seg">
-        <button className={seg==="people"?"on":""} onClick={()=>setSeg("people")}>People ({contacts.length})</button>
+        <button className={seg==="people"?"on":""} onClick={()=>setSeg("people")}>People ({liveContacts.length})</button>
         <button className={seg==="companies"?"on":""} onClick={()=>setSeg("companies")}>Companies ({orgs.length})</button>
       </div>
       <input className="input search" value={q} onChange={e=>setQ(e.target.value)}
@@ -1019,9 +1033,17 @@ function PeopleView({ data, onOpenContact, onOpenOrg, onImport, onDeleteContact,
         </div>
       )}
 
-      {seg==="people" && reviewCount>0 && (
+      {seg==="people" && reviewCount>0 && !showingArchived && (
         <button className="btn" style={{marginBottom:10}} onClick={onReview}>
           Review {reviewCount} imported contact{reviewCount===1?"":"s"} →
+        </button>
+      )}
+
+      {seg==="people" && archivedContacts.length>0 && (
+        <button className="btn" style={{marginBottom:10}} onClick={()=> setArchivedView(!showingArchived)}>
+          {showingArchived
+            ? "← Back to contacts"
+            : "Archived (" + archivedContacts.length + ")"}
         </button>
       )}
 
@@ -1034,7 +1056,7 @@ function PeopleView({ data, onOpenContact, onOpenOrg, onImport, onDeleteContact,
 
       {seg==="people" ? (
         people.length===0
-          ? (contacts.length===0
+          ? (contacts.length===0 && !showingArchived
               ? <div>
                   <Placeholder glyph={"\u{1F465}"} title="No contacts yet"
                     note="Import your phone or Google contacts to start — or tap + to add one by hand." />
@@ -1050,7 +1072,11 @@ function PeopleView({ data, onOpenContact, onOpenOrg, onImport, onDeleteContact,
                     <div className="avatar">{initials(c.name)}</div>
                     <div className="lr-main"><div className="lr-name">{c.name||"(unnamed)"}</div>
                       <div className="muted">{sub}</div></div>
-                    {c.tags && c.tags[0] && <span className="pill">{c.tags[0]}{c.tags.length>1?" +"+(c.tags.length-1):""}</span>}
+                    {/* Say so when a search result is one of the archived - otherwise it reads
+                        as a live contact and its absence from the list looks like a bug. */}
+                    {c.archived && !showingArchived
+                      ? <span className="pill warn">Archived</span>
+                      : c.tags && c.tags[0] && <span className="pill">{c.tags[0]}{c.tags.length>1?" +"+(c.tags.length-1):""}</span>}
                   </div>
                 </SwipeRow>
               );
@@ -1413,7 +1439,7 @@ function ContactForm({ contact, orgs, onSave, onClose }){
 
 function ContactDetail({ contact, org, interactions, tasks, onEdit, onDelete, onClose,
                          onLogInteraction, onDeleteInteraction, onAddTask, onToggleTask, onDeleteTask,
-                         onSummarize, onDraft }){
+                         onSummarize, onDraft, onRestore }){
   const c = contact;
   const [taskTitle,setTaskTitle] = useState("");
   const [taskDate,setTaskDate]   = useState("");
@@ -1434,7 +1460,17 @@ function ContactDetail({ contact, org, interactions, tasks, onEdit, onDelete, on
           <div><h2>{c.name}</h2>
             {(c.title||org) && <div className="muted">{[c.title, org&&org.name].filter(Boolean).join(" · ")}</div>}</div>
         </div>
-        {due && <div className={"duecard "+(due.state==="ok"?"ok":"alert")}>{due.label}</div>}
+        {/* The way back from an archive. Without it, "archive" is just a slower delete. */}
+        {c.archived && (
+          <div className="card">
+            <div style={{fontWeight:600, marginBottom:4}}>Archived</div>
+            <div className="muted" style={{marginBottom:8}}>
+              Hidden from your contacts and reminders. Nothing was lost — the history is still here.
+            </div>
+            <button className="btn primary" onClick={onRestore}>Restore to contacts</button>
+          </div>
+        )}
+        {due && !c.archived && <div className={"duecard "+(due.state==="ok"?"ok":"alert")}>{due.label}</div>}
         {c.tags && c.tags.length>0 && <div className="chips">{c.tags.map(t=> <span key={t} className="pill">{t}</span>)}</div>}
         <DField label="Emails" items={c.emails} link="mailto" />
         <DField label="Phones" items={c.phones} link="tel" />
@@ -2063,17 +2099,38 @@ function CardEditor({ cfg, onAddLead, onClose }){
   );
 }
 
+/* What makes an imported contact suspicious. Shown beside the contact so a decision
+   takes a second rather than a minute, and used as the filter in list mode so a whole
+   category of junk ("no email or phone") can be dealt with in one sweep.
+   Shared by both review modes so the card and the list can never disagree. */
+function reviewFlags(c){
+  const flags = [];
+  if (!(c.emails||[]).length && !(c.phones||[]).length) flags.push("No email or phone");
+  if (!c.name || c.name==="(no name)") flags.push("No name");
+  if ((c.phones||[]).length && !(c.phones||[]).some(p=> cmType(p))) flags.push("No number is labelled");
+  if ((c.sources||[]).length > 1) flags.push("Merged from " + c.sources.length + " sources");
+  return flags;
+}
+
 /* REVIEW QUEUE
    Importing thousands of contacts at once is fast; CHECKING them is not. So the
    import writes everything immediately and flags each touched contact
-   `needs_review`, and this screen works through that backlog one card at a time.
+   `needs_review`, and this screen works through that backlog.
    State lives on the contact record in the cloud, not in this component, which is
    what makes it resumable: close the tab, come back days later on another device,
-   and the queue simply picks up where it left off. */
-function ReviewQueue({ data, onKeep, onArchive, onEdit, onClose }){
+   and the queue simply picks up where it left off.
+
+   Two modes, because a real import contains both kinds of work:
+   - ONE AT A TIME, for contacts that need a judgement call.
+   - LIST, for the ones that don't: filter to a flag, select, and clear them in a
+     single action. A three-thousand-contact import is unfinishable at one tap per
+     contact, and an unfinished review queue is the same as no review at all. */
+function ReviewQueue({ data, onKeep, onArchive, onKeepMany, onArchiveMany, onEdit, onClose }){
   const pending = (data.contacts||[]).filter(c=> c.needs_review && !c.archived);
+  const [mode,setMode] = useState("one");     // one | list
   const [i,setI] = useState(0);
-  const c = pending[Math.min(i, Math.max(0, pending.length-1))];
+  const [flagFilter,setFlagFilter] = useState("");
+  const [selected,setSelected] = useState([]);
   const orgs = data.organizations||[];
 
   if (!pending.length) return (
@@ -2087,22 +2144,117 @@ function ReviewQueue({ data, onKeep, onArchive, onEdit, onClose }){
     </div>
   );
 
+  const head = (
+    <div className="overlay-head">
+      <button className="icon-btn" onClick={onClose}>←</button>
+      <b>Review — {pending.length} left</b>
+      <span style={{width:34}} />
+    </div>
+  );
+  const modeSwitch = (
+    <div className="seg">
+      <button className={mode==="one"?"on":""} onClick={()=>setMode("one")}>One at a time</button>
+      <button className={mode==="list"?"on":""} onClick={()=>setMode("list")}>List</button>
+    </div>
+  );
+
+  if (mode==="list"){
+    const shown = flagFilter
+      ? pending.filter(c=> reviewFlags(c).includes(flagFilter))
+      : pending;
+    // Only offer filters that would actually match something right now, so the row
+    // never sends you to an empty list.
+    const availableFlags = [...new Set(pending.flatMap(reviewFlags))].sort();
+    // A selection is only meaningful for contacts still on screen: filtering away a
+    // selected row must not archive it from behind a filter you can no longer see.
+    const selectedShown = selected.filter(id=> shown.some(c=> c.id===id));
+    const allShownSelected = shown.length>0 && selectedShown.length===shown.length;
+
+    function toggle(id){
+      setSelected(selected.includes(id) ? selected.filter(x=> x!==id) : selected.concat(id));
+    }
+    function act(fn, verb){
+      if (!selectedShown.length) return;
+      if (verb==="Archive" && !confirm("Archive " + selectedShown.length + " contact"
+          + (selectedShown.length===1?"":"s") + "? You can restore them from Archived.")) return;
+      fn(selectedShown);
+      setSelected([]);
+    }
+
+    return (
+      <div className="overlay">
+        {head}
+        <div className="overlay-body">
+          {modeSwitch}
+          {availableFlags.length>0 && (
+            <div className="chips filterchips">
+              <span className={"pill"+(flagFilter===""?" on":"")} onClick={()=>setFlagFilter("")}>
+                All ({pending.length})
+              </span>
+              {availableFlags.map(f=> (
+                <span key={f} className={"pill"+(flagFilter===f?" on":"")}
+                  onClick={()=> setFlagFilter(flagFilter===f?"":f)}>
+                  {f} ({pending.filter(c=> reviewFlags(c).includes(f)).length})
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div className="row" style={{justifyContent:"space-between", marginBottom:6}}>
+            <button className="btn ghost" onClick={()=>
+              setSelected(allShownSelected
+                ? selected.filter(id=> !shown.some(c=> c.id===id))
+                : [...new Set(selected.concat(shown.map(c=> c.id)))])}>
+              {allShownSelected ? "Clear selection" : "Select all " + shown.length}
+            </button>
+            <span className="muted">{selectedShown.length} selected</span>
+          </div>
+
+          {shown.map(c=>{
+            const org = orgs.find(o=> o.id===c.org_id);
+            const sub = [c.title, org && org.name].filter(Boolean).join(" · ")
+              || cmValue(c.emails&&c.emails[0]) || cmValue(c.phones&&c.phones[0]) || "";
+            const flags = reviewFlags(c);
+            return (
+              <div key={c.id} className="list-row" onClick={()=> toggle(c.id)}>
+                <input type="checkbox" checked={selected.includes(c.id)} readOnly />
+                <div className="lr-main">
+                  <div className="lr-name">{c.name||"(unnamed)"}</div>
+                  <div className="muted">{sub}</div>
+                </div>
+                {flags[0] && <span className="pill warn">{flags.length>1 ? flags.length+" flags" : flags[0]}</span>}
+              </div>
+            );
+          })}
+
+          {/* Bulk bar sits at the bottom of the list: you choose, then you act. */}
+          <div className="row" style={{marginTop:12}}>
+            <button className="btn primary" disabled={!selectedShown.length}
+              onClick={()=> act(onKeepMany, "Keep")}>
+              Looks right ({selectedShown.length})
+            </button>
+            <button className="btn danger" disabled={!selectedShown.length}
+              onClick={()=> act(onArchiveMany, "Archive")}>
+              Archive ({selectedShown.length})
+            </button>
+          </div>
+          <p className="muted" style={{textAlign:"center", marginTop:14}}>
+            Archiving hides a contact without deleting it — find it again under Archived.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const c = pending[Math.min(i, Math.max(0, pending.length-1))];
   const org = orgs.find(o=> o.id===c.org_id);
-  // What makes this contact suspicious - shown so a decision takes a second, not a minute.
-  const flags = [];
-  if (!(c.emails||[]).length && !(c.phones||[]).length) flags.push("No email or phone");
-  if (!c.name || c.name==="(no name)") flags.push("No name");
-  if ((c.phones||[]).length && !(c.phones||[]).some(p=> cmType(p))) flags.push("No number is labelled");
-  if ((c.sources||[]).length > 1) flags.push("Merged from " + c.sources.length + " sources");
+  const flags = reviewFlags(c);
 
   return (
     <div className="overlay">
-      <div className="overlay-head">
-        <button className="icon-btn" onClick={onClose}>←</button>
-        <b>Review — {pending.length} left</b>
-        <span style={{width:34}} />
-      </div>
+      {head}
       <div className="overlay-body">
+        {modeSwitch}
         <div className="card">
           <div className="detail-name">
             <div className="avatar lg">{initials(c.name)}</div>
@@ -2255,6 +2407,30 @@ function App(){
   function reviewArchive(id){
     saveCollection("contacts", (data.contacts||[]).map(c=> c.id===id
       ? {...c, needs_review:false, archived:true, updated_at:todayISO()} : c));
+  }
+  // Restoring does NOT re-flag the contact for review: it was reviewed, the call was
+  // simply wrong, and sending it back to the queue would make undoing a mistake cost
+  // a second decision.
+  function restoreContact(id){
+    saveCollection("contacts", (data.contacts||[]).map(c=> c.id===id
+      ? {...c, archived:false, updated_at:todayISO()} : c));
+    flash("Restored to contacts");
+  }
+
+  // Bulk equivalents of the two review actions. These map the whole array ONCE for the
+  // whole selection: calling the single-contact version in a loop would queue a separate
+  // cloud push per contact, which is how a 500-contact sweep turns into 500 requests.
+  function reviewKeepMany(ids){
+    const set = new Set(ids);
+    saveCollection("contacts", (data.contacts||[]).map(c=> set.has(c.id)
+      ? {...c, needs_review:false, verified_at:todayISO(), updated_at:todayISO()} : c));
+    flash("Kept " + ids.length + " contact" + (ids.length===1?"":"s"));
+  }
+  function reviewArchiveMany(ids){
+    const set = new Set(ids);
+    saveCollection("contacts", (data.contacts||[]).map(c=> set.has(c.id)
+      ? {...c, needs_review:false, archived:true, updated_at:todayISO()} : c));
+    flash("Archived " + ids.length + " contact" + (ids.length===1?"":"s"));
   }
 
   // Accept a digital-card "connection" (lead) into contacts, tagged by source.
@@ -2566,7 +2742,8 @@ function App(){
           onToggleTask={toggleTask}
           onDeleteTask={deleteTask}
           onSummarize={()=> summarizeContact(c)}
-          onDraft={()=> draftMessage(c)} />;
+          onDraft={()=> draftMessage(c)}
+          onRestore={()=> restoreContact(c.id)} />;
       })()}
 
       {overlay && overlay.type==="interactionForm" && (()=>{
@@ -2581,6 +2758,7 @@ function App(){
 
       {overlay && overlay.type==="review" &&
         <ReviewQueue data={data} onKeep={reviewKeep} onArchive={reviewArchive}
+          onKeepMany={reviewKeepMany} onArchiveMany={reviewArchiveMany}
           onEdit={(c)=> setOverlay({type:"contactForm", contact:c})}
           onClose={()=> setOverlay(null)} />}
 
