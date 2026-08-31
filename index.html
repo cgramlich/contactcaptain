@@ -268,15 +268,15 @@ const { useState, useEffect, useRef, useCallback } = React;
 // User-facing semantic version (MAJOR.MINOR.PATCH). This is what shows in Settings,
 // the update prompts, and the footers - a real version, not a build date. Bump it on
 // every deploy: PATCH for a fix, MINOR for a feature, MAJOR for a big milestone.
-const APP_VERSION = "0.8.1";
+const APP_VERSION = "0.8.2";
 // Internal build stamp. Bump on every deploy too (today's date + a counter). This is
 // what the updater actually COMPARES (it's monotonic, so detection never misfires) and
 // what cache-busts the reload; APP_VERSION above is the friendly label shown to users.
-const BUILD = "2026-08-28.1";
+const BUILD = "2026-08-30.1";
 const BRAND = { name: "ContactCaptain", tagline: "Stay close to the people in your orbit." };
 
 // Hosted backend base (Railway). Overridable per-user in Settings.
-const API_BASE_DEFAULT = "https://inner-orbit-production.up.railway.app";
+const API_BASE_DEFAULT = "https://api.contactcaptain.com";
 
 // Supabase Auth. The publishable (anon) key is public by design — safe to ship.
 const SUPABASE_URL = "https://efzuuqhraaxwsrkqfavn.supabase.co";

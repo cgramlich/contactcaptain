@@ -70,7 +70,7 @@ backend, deployed to the web; Capacitor native build is future.
   **Pages serves ONE custom domain only** — the old getinnerorbit.io now 404s and is NOT a
   fallback. Card links shared before 2026-08-19 are dead unless that domain is set to
   URL-forward at the registrar. `cardUrl()` builds from the live origin so this cannot recur.
-- **API (backend):** https://inner-orbit-production.up.railway.app — Railway, **root dir =
+- **API (backend):** https://api.contactcaptain.com — Railway, **root dir =
   `backend/`**, auto-deploys on push to `main`. Health: `GET /api/health`.
 - **Supabase project:** `efzuuqhraaxwsrkqfavn` (org Team CG, Pro). Asymmetric **ES256** JWT
   signing keys (backend verifies via JWKS — no JWT secret needed).

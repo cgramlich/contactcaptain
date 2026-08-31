@@ -10,7 +10,6 @@ in exactly three places, each for a reason:
 
 | Where | Why it stays |
 |---|---|
-| The Railway API hostname (`inner-orbit-production...`) | Renaming the service changes the URL, which breaks the live app until the frontend catches up. **Being replaced** by `api.contactcaptain.com` - see What is open. |
 | `getinnerorbit.io` | A domain that really was ours. Now 404s; kept in CORS and in the history below so nobody re-adds it as a fallback. |
 | The legacy `orbit_*` localStorage keys | Read-only fallback so existing installs are not signed out. Deleting them logs people out for no benefit. |
 
@@ -111,10 +110,11 @@ Schema changes are pasted into the Supabase SQL editor by hand. There is no migr
 - **2026-08-19: renamed Inner Orbit → ContactCaptain**, adopting the portfolio Captain family.
   The GitHub repo, appId and domain followed. **2026-08-29:** the local folder followed too
   (`orbit-crm` → `contactcaptain`), once it was confirmed nothing referenced it.
-  *Still deliberately NOT renamed:* the Railway service. Its hostname is baked into
-  `API_BASE_DEFAULT`, so a rename breaks the live app for the window between the new URL
-  existing and the frontend deploying. The fix is a custom domain (`api.contactcaptain.com`),
-  not a rename - both hostnames answer during the switch, so there is no outage.
+  **2026-08-30:** the API moved to **`api.contactcaptain.com`** (the portfolio pattern, as with
+  api.linkscaptain.com). *Rejected:* renaming the Railway service, which swaps its URL out from
+  under the already-deployed frontend. A custom domain leaves BOTH hostnames answering, so the
+  cutover had no outage window. The Railway service is still internally labelled `inner-orbit`;
+  that label is invisible to everything and is not worth touching.
 
 ### Domain
 - **2026-08-19: getinnerorbit.io is dead, not a fallback.** GitHub Pages serves exactly **one**
@@ -213,12 +213,9 @@ Schema changes are pasted into the Supabase SQL editor by hand. There is no migr
   import only relationships he would keep if he left (vendors, counterparties, peers).
   **He has not decided. Do not import work accounts until he does.**
 - Re-enable email confirmation; optional getinnerorbit.io URL-forward.
-- **Give the API its own hostname: `api.contactcaptain.com`** (the portfolio pattern - see
-  api.linkscaptain.com). This is what retires the last "Orbit" name without an outage. Order
-  matters: add the custom domain in Railway, add the CNAME it gives you at Porkbun, confirm the
-  new hostname answers `/api/health`, and only THEN change `API_BASE_DEFAULT` and push. Both
-  hostnames answer throughout, so there is no window where the app is pointed at nothing. Do NOT
-  simply rename the Railway service - that swaps the URL out from under the deployed frontend.
+- Optionally retire the old `inner-orbit-production.up.railway.app` domain in Railway once
+  nothing references it. It costs nothing to leave, and leaving it means any old client that
+  still points there keeps working.
 - Whether Mark works from `mhutdallas` or a second GitHub account he mentioned.
 
 ### Known gaps
