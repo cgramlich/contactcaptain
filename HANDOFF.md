@@ -4,14 +4,17 @@ Zero-context resumption document. If you have no memory of this project, read on
 and you should be able to make the next change correctly **without asking anyone and without
 undoing something that was chosen on purpose.**
 
-**Naming — read this first.** The product is **ContactCaptain** (confirmed 2026-08-29).
-"Orbit" / "Inner Orbit" is the OLD name. It survives in this file only where it names a real
-path or identifier that still exists on disk or in a service: the repo folder `orbit-crm`, the
-retired appId `com.orbitcrm.app`, the dead domain getinnerorbit.io, the legacy `orbit_*` storage
-keys, and the Railway URL. **Same project, not two.** Those are deliberately NOT renamed — the
-churn across git remotes, Railway and hooks costs more than the confusion, provided the mismatch
-is documented, which is what this paragraph is. The memory file `orbit-personal-crm-scope.md` is
-stale-named for the same reason; its contents say ContactCaptain.
+**Naming.** The product is **ContactCaptain** (confirmed 2026-08-29). "Orbit" / "Inner Orbit"
+is the OLD name, retired from the product, the repo, the local folder and the appId. It survives
+in exactly three places, each for a reason:
+
+| Where | Why it stays |
+|---|---|
+| The Railway API hostname (`inner-orbit-production...`) | Renaming the service changes the URL, which breaks the live app until the frontend catches up. **Being replaced** by `api.contactcaptain.com` - see What is open. |
+| `getinnerorbit.io` | A domain that really was ours. Now 404s; kept in CORS and in the history below so nobody re-adds it as a fallback. |
+| The legacy `orbit_*` localStorage keys | Read-only fallback so existing installs are not signed out. Deleting them logs people out for no benefit. |
+
+Anything else calling this "Orbit" is stale and should be corrected.
 
 `HANDOFF.md` is authoritative. `BRIEFING.md` derives from it. `CLAUDE.md` holds the in-repo
 architecture detail; `ROADMAP.md` lists built features and what is next; `CONTRIBUTING.md` is
@@ -59,8 +62,9 @@ stack as the rest of the portfolio.
 | `CLAUDE.md` | Architecture, endpoints, env vars, conventions. Auto-read by Claude Code. |
 | `dev_server.py` | Local static server with permissive CORS. Dev only. |
 
-- **Repo:** `github.com/cgramlich/contactcaptain` (public). Local clone: `C:\Users\cjgra\orbit-crm`
-  — the directory is still named `orbit-crm` and that is fine, nothing depends on it.
+- **Repo:** `github.com/cgramlich/contactcaptain` (public). Local clone:
+  `C:\Users\cjgra\contactcaptain` (renamed from `orbit-crm` on 2026-08-29; nothing
+  depended on the old folder name - the pre-push hook uses absolute paths elsewhere).
 - **Docs (Dropbox):** `CG Apps\Personal CRM\` — `Personal CRM Log\` holds dated session entries,
   `Personal CRM Architecture & Design\` holds the original scope doc.
 
@@ -105,9 +109,12 @@ Schema changes are pasted into the Supabase SQL editor by hand. There is no migr
   while still unpublished, because an appId is permanent from the first store submission.
   *Rejected:* keeping the old id "because it is invisible" — true today, immovable once shipped.
 - **2026-08-19: renamed Inner Orbit → ContactCaptain**, adopting the portfolio Captain family.
-  *Deliberately NOT renamed:* the Railway service (its URL is baked into `API_BASE_DEFAULT`, so
-  renaming breaks the live app until the code catches up) and the local folder. Both cosmetic;
-  neither worth an outage.
+  The GitHub repo, appId and domain followed. **2026-08-29:** the local folder followed too
+  (`orbit-crm` → `contactcaptain`), once it was confirmed nothing referenced it.
+  *Still deliberately NOT renamed:* the Railway service. Its hostname is baked into
+  `API_BASE_DEFAULT`, so a rename breaks the live app for the window between the new URL
+  existing and the frontend deploying. The fix is a custom domain (`api.contactcaptain.com`),
+  not a rename - both hostnames answer during the switch, so there is no outage.
 
 ### Domain
 - **2026-08-19: getinnerorbit.io is dead, not a fallback.** GitHub Pages serves exactly **one**
@@ -206,6 +213,12 @@ Schema changes are pasted into the Supabase SQL editor by hand. There is no migr
   import only relationships he would keep if he left (vendors, counterparties, peers).
   **He has not decided. Do not import work accounts until he does.**
 - Re-enable email confirmation; optional getinnerorbit.io URL-forward.
+- **Give the API its own hostname: `api.contactcaptain.com`** (the portfolio pattern - see
+  api.linkscaptain.com). This is what retires the last "Orbit" name without an outage. Order
+  matters: add the custom domain in Railway, add the CNAME it gives you at Porkbun, confirm the
+  new hostname answers `/api/health`, and only THEN change `API_BASE_DEFAULT` and push. Both
+  hostnames answer throughout, so there is no window where the app is pointed at nothing. Do NOT
+  simply rename the Railway service - that swaps the URL out from under the deployed frontend.
 - Whether Mark works from `mhutdallas` or a second GitHub account he mentioned.
 
 ### Known gaps

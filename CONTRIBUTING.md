@@ -3,6 +3,21 @@
 Welcome! This guide gets a second developer productive without touching production
 secrets or the live site. It assumes you're new to GitHub — no command line required.
 
+## Start here (5 minutes, in this order)
+
+1. **`HANDOFF.md`** — the whole project in one file: what is true now, and **decisions with the
+   road not taken**. Read this before changing anything; it is what stops you "fixing" something
+   that was chosen deliberately.
+2. **`ROADMAP.md`** — what already exists and what is next, including a *Good first tasks* list.
+3. **`CLAUDE.md`** — architecture, endpoints, env vars, conventions. If you are working with an
+   AI coding session, it reads this automatically; point it at `HANDOFF.md` too, which it will not.
+4. **`BRIEFING.md`** — only if you need the outward-facing story. Note it is written to leave the
+   machine: every example in it is fabricated, and it must stay that way.
+
+Using an AI session to review or build? Ask it to read `HANDOFF.md` and `CLAUDE.md` first, then
+work on a branch. The house rules below (version lockstep, comment the *why*, no secrets) apply
+to AI-written code exactly as they do to yours — you own what you open a PR with.
+
 ## The one thing to know first
 
 **`main` is the live site.** Anything merged into `main` deploys automatically:

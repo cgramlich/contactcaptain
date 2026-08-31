@@ -12,7 +12,7 @@ backend, Capacitor native wrap, service-worker offline.
 
 ## Layout
 ```
-contactcaptain (local dir: orbit-crm)
+contactcaptain
   index.html            # the app (single-file PWA)
   CLAUDE.md             # architecture / endpoints / env / conventions (read this first)
   sw.js                 # service worker (offline shell + data reads)
