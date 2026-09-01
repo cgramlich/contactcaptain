@@ -12,6 +12,7 @@ in exactly three places, each for a reason:
 |---|---|
 | `getinnerorbit.io` | A domain that really was ours. Now 404s; kept in CORS and in the history below so nobody re-adds it as a fallback. |
 | The legacy `orbit_*` localStorage keys | Read-only fallback so existing installs are not signed out. Deleting them logs people out for no benefit. |
+| The Railway service label `inner-orbit` | Internal only and invisible to every client. Renaming the service swaps its URL out from under the deployed frontend; the custom domain made it moot. |
 
 Anything else calling this "Orbit" is stale and should be corrected.
 
@@ -33,18 +34,18 @@ stack as the rest of the portfolio.
 
 ---
 
-## Current state — 2026-08-28
+## Current state — 2026-08-31
 
 - **Live and in daily-usable shape.** Frontend on GitHub Pages at **contactcaptain.com**
   (HTTPS enforced). Backend on Railway, healthy, AI configured. Supabase Postgres + Auth.
 - **Versions:** read them, do not trust a number written in prose. `APP_VERSION` + `BUILD` in
   `index.html`, `VERSION` in `sw.js` (all three move together), and the backend `/api/health`.
-  As of this writing the frontend was 0.8.0 / BUILD 2026-08-20.2 and the backend 0.1.2.
-- **Working tree clean, everything committed and pushed** (39 commits on `main`).
+  Do not copy a number out of this bullet into anything.
 - **The database is essentially empty.** One account (Chris). Contacts, interactions, tasks and
   deals are all empty; one digital card exists. **The contact import has not been run** — this
-  is the single biggest gap between "built" and "useful".
-- Second developer **Mark (`mhutdallas`)** has accepted a write invite. He has not pushed yet.
+  is the single biggest gap between "built" and "useful", and it is what most of the recent
+  work has been aimed at surviving.
+- Second developer **Mark (`mhutdallas`)** has accepted a write invite.
 
 ---
 
@@ -142,6 +143,18 @@ Schema changes are pasted into the Supabase SQL editor by hand. There is no migr
   (`needs_review`), which is exactly what makes it resumable across days and devices.
 - **Archive is not delete.** Archived contacts leave the views but keep their history, because
   the usual reason a record looks like junk is a bad import rather than a bad contact.
+- **2026-08-31: that promise is now actually implemented.** It had been written down and
+  believed for eleven days while nothing in the app ever read an archived contact back —
+  `archived` was set in one place and filtered out in three, so archiving was a slower delete
+  and the code comment claiming archived records were searchable was false. There are now two
+  ways back (an Archived view, and search, which sweeps the archive and labels those rows) plus
+  Restore on the contact detail. *Rejected:* leaving it until after the import "since nothing is
+  archived yet" — the queue's one destructive button was about to be pressed thousands of times.
+- **2026-08-31: the review queue gained a bulk list mode** beside the one-at-a-time card: filter
+  by flag, select, Keep or Archive in one action. *Rejected:* auto-confirming the clean-looking
+  contacts on import, which shrinks the backlog faster but clears records you never lay eyes on.
+  The judgement stays with the human; only the clicking is batched. Bulk actions write the whole
+  contacts array once per action, not once per contact — see CLAUDE.md.
 
 ### Auth, email, security
 - **RLS enabled with NO policies on every table.** The backend secret key bypasses RLS, so the
@@ -227,6 +240,9 @@ Schema changes are pasted into the Supabase SQL editor by hand. There is no migr
 - `backend/.env` currently has an empty `SUPABASE_SERVICE_ROLE_KEY` locally. Production on
   Railway is unaffected, but the local backend will not start until it is refilled.
 - No live preview in the card editor; you must open the link to see the card.
+- **No automated tests of any kind.** The 2026-08-31 review-queue and archive work was verified
+  by driving a browser against an offline-mode copy of the app; that harness lives in a session
+  scratchpad, not in the repo. Anyone touching those paths is re-verifying by hand.
 
 ### Parked (understood, not started)
 Google Contacts sync; Gmail → auto-timeline (needs Google's restricted-scope review); enrichment

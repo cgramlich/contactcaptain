@@ -20,7 +20,7 @@
    - everything else          -> default network
 */
 
-const VERSION     = "0.8.2";                 // keep in lockstep with APP_VERSION
+const VERSION     = "0.9.1";                 // keep in lockstep with APP_VERSION
 const SHELL_CACHE = "cc-shell-" + VERSION;
 const ASSET_CACHE = "cc-assets-" + VERSION;
 const DATA_CACHE  = "cc-data-v1";         // user collections; un-versioned so it
