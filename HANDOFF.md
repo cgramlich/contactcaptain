@@ -34,10 +34,12 @@ stack as the rest of the portfolio.
 
 ---
 
-## Current state — 2026-08-31
+## Current state — 2026-10-04
 
 - **Live and in daily-usable shape.** Frontend on GitHub Pages at **contactcaptain.com**
-  (HTTPS enforced). Backend on Railway, healthy, AI configured. Supabase Postgres + Auth.
+  (HTTPS enforced). Backend on Railway at **api.contactcaptain.com**, healthy, AI configured.
+  Supabase Postgres + Auth. Nothing is mid-flight: working tree clean, local and origin in
+  sync, no open pull requests, last merge was Mark's PR #1 on 2026-09-01.
 - **Versions:** read them, do not trust a number written in prose. `APP_VERSION` + `BUILD` in
   `index.html`, `VERSION` in `sw.js` (all three move together), and the backend `/api/health`.
   Do not copy a number out of this bullet into anything.
@@ -217,6 +219,46 @@ Schema changes are pasted into the Supabase SQL editor by hand. There is no migr
 
 ## What is open
 
+### Do this first in a new session
+**Finish the function-privilege security check on the LIVE Supabase database.** This is the
+only reason the session of 2026-10-04 ended: that session had no Supabase plugin tools and the
+secret key in the local `backend/.env` is blank, so it could not reach the database at all.
+
+Background: RLS protects tables, not functions. Postgres grants EXECUTE on every new function
+to PUBLIC, so anyone holding the public anon key can call `/rest/v1/rpc/<name>` directly.
+FitnessCaptain found this on 2026-09-28; MenuCaptain had all four of its functions open and
+fixed them live on 2026-09-29. ContactCaptain was never swept, so its status is **unknown**.
+
+What is already established, from reading this repo:
+- `backend/schema.sql` defines **no functions at all**.
+- Nothing calls one: `.rpc(` and `/rest/v1/rpc` appear nowhere in `index.html`, `sw.js` or
+  `backend/main.py`.
+- So the expected result is **zero rows**, and the blanket revoke below is safe here precisely
+  because no browser code depends on any function. Confirm against the live database anyway —
+  a function could have been created by hand in the SQL editor.
+
+Read-only check (run it with Supabase plugin tools if this session has them, otherwise hand it
+to Chris for the SQL editor). Healthy = no rows, or every row has `anon_can_run` false and
+`backend_can_run` true:
+
+```sql
+select p.proname, has_function_privilege('anon', p.oid, 'execute') as anon_can_run, has_function_privilege('service_role', p.oid, 'execute') as backend_can_run from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public';
+```
+
+Only if some `anon_can_run` is true, this is the fix — and it CHANGES PRODUCTION, so ask Chris
+with a question card first, then re-run the check:
+
+```sql
+revoke execute on all functions in schema public from public, anon, authenticated; grant execute on all functions in schema public to service_role; alter default privileges in schema public revoke execute on functions from public, anon, authenticated; alter default privileges in schema public grant execute on functions to service_role;
+```
+
+**The grant is not optional.** Whether `service_role` holds EXECUTE explicitly or only through
+PUBLIC depends on the project's default privileges. If the revoke takes the backend's access
+too, nothing errors where callers log and swallow — work silently stops. Put the statements in
+`backend/schema.sql` either way, so a fresh deploy starts locked, and record the result in the
+`supabase-rls-backend-only` memory. Trigger functions are safe: EXECUTE is checked when a
+trigger is created, not when it fires.
+
 ### Blocked on Chris
 - **Run the contact import.** Exports from Gmail (CJG Personal and STB) and iCloud. Nothing is
   imported yet; the app is empty.
@@ -230,6 +272,9 @@ Schema changes are pasted into the Supabase SQL editor by hand. There is no migr
   nothing references it. It costs nothing to leave, and leaving it means any old client that
   still points there keeps working.
 - Whether Mark works from `mhutdallas` or a second GitHub account he mentioned.
+- Two standing habits added 2026-09-28, portfolio-wide: present every decision as an
+  AskUserQuestion card with a recommended option first, and send one PushNotification
+  when newly blocked on Chris. Neither is specific to this app.
 
 ### Known gaps
 - **No manual merge tool.** Dedupe matches on email or phone only, so two records for one person
