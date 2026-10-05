@@ -119,3 +119,20 @@ grant all privileges on all tables    in schema public to service_role;
 grant all privileges on all sequences in schema public to service_role;
 alter default privileges in schema public grant all on tables    to service_role;
 alter default privileges in schema public grant all on sequences to service_role;
+
+-- FUNCTION PRIVILEGES (portfolio rule, added 2026-10-04)
+-- RLS protects TABLES, not FUNCTIONS. Postgres grants EXECUTE on every new function to
+-- PUBLIC, so anyone holding the public anon key could call /rest/v1/rpc/<name> directly.
+-- FitnessCaptain found this 2026-09-28; MenuCaptain had all four of its functions open.
+-- This schema defines no functions today and the live database has none (verified
+-- 2026-10-04), so these statements are a no-op - they exist so that a function added later,
+-- or a fresh deploy, starts locked instead of open.
+--
+-- The grant is NOT optional. Whether service_role holds EXECUTE in its own right or only
+-- through PUBLIC depends on the project's default privileges; if the revoke takes the
+-- backend's access too, callers that log and swallow fail SILENTLY rather than erroring.
+-- Trigger functions are unaffected: EXECUTE is checked when a trigger is created, not fired.
+revoke execute on all functions in schema public from public, anon, authenticated;
+grant execute on all functions in schema public to service_role;
+alter default privileges in schema public revoke execute on functions from public, anon, authenticated;
+alter default privileges in schema public grant execute on functions to service_role;

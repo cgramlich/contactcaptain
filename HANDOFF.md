@@ -219,45 +219,29 @@ Schema changes are pasted into the Supabase SQL editor by hand. There is no migr
 
 ## What is open
 
-### Do this first in a new session
-**Finish the function-privilege security check on the LIVE Supabase database.** This is the
-only reason the session of 2026-10-04 ended: that session had no Supabase plugin tools and the
-secret key in the local `backend/.env` is blank, so it could not reach the database at all.
+### Function privileges: CHECKED AND CLEAN (2026-10-04)
+Settled, do not redo. The live database has **no functions in the public schema** - the
+privilege query returned zero rows - so there is nothing the public anon key can call and
+nothing to revoke. Consistent with the code: `backend/schema.sql` defines no functions, and
+`.rpc(` / `/rest/v1/rpc` appear nowhere in `index.html`, `sw.js` or `backend/main.py`.
 
-Background: RLS protects tables, not functions. Postgres grants EXECUTE on every new function
-to PUBLIC, so anyone holding the public anon key can call `/rest/v1/rpc/<name>` directly.
-FitnessCaptain found this on 2026-09-28; MenuCaptain had all four of its functions open and
-fixed them live on 2026-09-29. ContactCaptain was never swept, so its status is **unknown**.
+Why this was ever in question: RLS protects tables, not functions. Postgres grants EXECUTE on
+every new function to PUBLIC, so anyone holding the public anon key can call
+`/rest/v1/rpc/<name>` directly. FitnessCaptain found this 2026-09-28 and MenuCaptain had all
+four of its functions open. ContactCaptain simply never had any.
 
-What is already established, from reading this repo:
-- `backend/schema.sql` defines **no functions at all**.
-- Nothing calls one: `.rpc(` and `/rest/v1/rpc` appear nowhere in `index.html`, `sw.js` or
-  `backend/main.py`.
-- So the expected result is **zero rows**, and the blanket revoke below is safe here precisely
-  because no browser code depends on any function. Confirm against the live database anyway —
-  a function could have been created by hand in the SQL editor.
-
-Read-only check (run it with Supabase plugin tools if this session has them, otherwise hand it
-to Chris for the SQL editor). Healthy = no rows, or every row has `anon_can_run` false and
-`backend_can_run` true:
+**This stops being true the moment someone adds a function.** If one is ever created, re-run
+the check below and, if `anon_can_run` is true, revoke - and keep the matching grant, because
+if the revoke takes `service_role`'s access too, callers that log and swallow fail silently
+rather than erroring.
 
 ```sql
 select p.proname, has_function_privilege('anon', p.oid, 'execute') as anon_can_run, has_function_privilege('service_role', p.oid, 'execute') as backend_can_run from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public';
 ```
 
-Only if some `anon_can_run` is true, this is the fix — and it CHANGES PRODUCTION, so ask Chris
-with a question card first, then re-run the check:
-
 ```sql
 revoke execute on all functions in schema public from public, anon, authenticated; grant execute on all functions in schema public to service_role; alter default privileges in schema public revoke execute on functions from public, anon, authenticated; alter default privileges in schema public grant execute on functions to service_role;
 ```
-
-**The grant is not optional.** Whether `service_role` holds EXECUTE explicitly or only through
-PUBLIC depends on the project's default privileges. If the revoke takes the backend's access
-too, nothing errors where callers log and swallow — work silently stops. Put the statements in
-`backend/schema.sql` either way, so a fresh deploy starts locked, and record the result in the
-`supabase-rls-backend-only` memory. Trigger functions are safe: EXECUTE is checked when a
-trigger is created, not when it fires.
 
 ### Blocked on Chris
 - **Run the contact import.** Exports from Gmail (CJG Personal and STB) and iCloud. Nothing is
